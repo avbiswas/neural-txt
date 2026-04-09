@@ -5,14 +5,14 @@ Structured NLP tasks powered by a fine-tuned 135M parameter language model. Extr
 ## Install
 
 ```bash
-# Base (tokenizer only, no inference backend)
-uv pip install -e .
+# Base (no inference backend)
+pip install neuraltxt
 
 # With HuggingFace backend (torch)
-uv pip install -e ".[hf]"
+pip install neuraltxt[hf]
 
 # With MLX backend (Apple Silicon)
-uv pip install -e ".[mlx]"
+pip install neuraltxt[mlx]
 ```
 
 ## Quick start
@@ -38,20 +38,41 @@ pairs = model.generate_qa_pairs(passage)
 triplets = model.extract_triplets(passage)
 ```
 
+## JSON mode
+
+Every method supports `json=True` for guaranteed structured output via [outlines](https://github.com/dottxt-ai/outlines):
+
+```python
+# Returns a BulletsOutput pydantic model
+bullets = model.extract_bullets(passage, json=True)
+print(bullets.bullets)  # list[str]
+
+# Returns a QAPairsOutput pydantic model
+qa = model.generate_qa_pairs(passage, json=True)
+for pair in qa.pairs:
+    print(pair.question, pair.answer)
+
+# Returns a TripletsOutput pydantic model
+triplets = model.extract_triplets(passage, json=True)
+for t in triplets.triplets:
+    print(t.subject, t.relation, t.object)
+```
+
 ## API
 
-| Method | Input | Output |
-|---|---|---|
-| `extract_bullets(passage)` | passage | `list[str]` |
-| `generate_qa_pairs(passage)` | passage | `list[QAPair]` |
-| `generate_question(passage)` | passage | `str` |
-| `extract_fact(passage)` | passage | `str` |
-| `answer(question, passage)` | question + passage | `str` |
-| `rephrase(passage)` | passage | `str` |
-| `continue_from(passage)` | passage start | `str` |
-| `extract_triplets(passage)` | passage | `list[Triplet]` |
-| `compare(passage_a, passage_b)` | two passages | `str` |
-| `find_relevant(question, passages)` | question + passage list | `RetrievalResult` |
+| Method | Input | Output | JSON Output |
+|---|---|---|---|
+| `extract_bullets(passage)` | passage | `list[str]` | `BulletsOutput` |
+| `generate_qa_pairs(passage)` | passage | `list[QAPair]` | `QAPairsOutput` |
+| `generate_question(passage)` | passage | `str` | `QuestionOutput` |
+| `generate_questions_list(passage)` | passage | `list[str]` | `QuestionsListOutput` |
+| `extract_fact(passage)` | passage | `str` | `FactOutput` |
+| `answer(question, passage)` | question + passage | `str` | `AnswerOutput` |
+| `rephrase(passage)` | passage | `str` | `RephraseOutput` |
+| `continue_from(passage)` | passage start | `str` | `ContinuationOutput` |
+| `extract_triplets(passage)` | passage | `list[Triplet]` | `TripletsOutput` |
+| `compare(passage_a, passage_b)` | two passages | `str` | `ComparisonOutput` |
+| `find_relevant(question, passages)` | question + passage list | `RetrievalResult` | `RetrievalOutput` |
 
 ## Models
 
@@ -65,13 +86,15 @@ Pass a custom path: `NeuralTxt("path/to/model", backend="hf")`
 ## Gradio demo
 
 ```bash
+pip install neuraltxt[app]
+
 # MLX
-uv run app.py paperbd/smollm_135M_neuraltxt_mlx_v1 --mlx
+python app.py paperbd/smollm_135M_neuraltxt_mlx_v1 --mlx
 
 # HuggingFace
-uv run app.py paperbd/smollm_135M_neuraltxt_v1
+python app.py paperbd/smollm_135M_neuraltxt_v1
 
 # Options
 #   --temperature 0.4    sampling temperature (default 0.4)
-#   --n 2                parallel generations, 1-4 (default 2)
+#   -n 2                 parallel generations, 1-4 (default 2)
 ```

@@ -16,6 +16,19 @@ def parse_bullets(text: str) -> list[str]:
     return bullets if bullets else [text.strip()]
 
 
+def parse_questions_list(text: str) -> list[str]:
+    """Parse a list of questions from markdown bullets or numbered list."""
+    lines = text.strip().splitlines()
+    questions = []
+    for line in lines:
+        line = line.strip()
+        # Strip bullet or number prefix
+        cleaned = re.sub(r"^(?:[-*]\s*|\d+[.)]\s*)", "", line).strip()
+        if cleaned and cleaned.endswith("?"):
+            questions.append(cleaned)
+    return questions if questions else [text.strip()]
+
+
 def parse_qa_pairs(text: str) -> list[QAPair]:
     """Parse markdown Q&A blocks: **Question:** ... **Answer:** ..."""
     pairs = []

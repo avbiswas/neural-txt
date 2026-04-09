@@ -48,6 +48,9 @@ class QAPairsOutput(BaseModel):
 class QuestionOutput(BaseModel):
     question: str
 
+class QuestionsListOutput(BaseModel):
+    questions: list[str]
+
 class FactOutput(BaseModel):
     fact: str
 

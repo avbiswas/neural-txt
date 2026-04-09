@@ -14,7 +14,7 @@ except ImportError:
 
 from neuraltxt import NeuralTxt
 from neuraltxt.types import (
-    BulletsOutput, QAPairsOutput, QuestionOutput, FactOutput,
+    BulletsOutput, QAPairsOutput, QuestionOutput, QuestionsListOutput, FactOutput,
     AnswerOutput, RephraseOutput, ContinuationOutput,
     TripletsOutput, ComparisonOutput,
 )
@@ -151,6 +151,7 @@ MODES = {
     "bullets":      {"desc": "Extract key points as bullets",     "hint": "Paste passage..."},
     "qa_pairs":     {"desc": "Generate Q&A pairs",                "hint": "Paste passage..."},
     "question":     {"desc": "Generate a question from passage",  "hint": "Paste passage..."},
+    "questions_list": {"desc": "Generate a list of questions",    "hint": "Paste passage..."},
     "fact":         {"desc": "Extract a single fact",             "hint": "Paste passage..."},
     "answer":       {"desc": "Answer question given passage",     "hint": "Paste passage..."},
     "rephrase":     {"desc": "Rephrase and elaborate",            "hint": "Paste passage..."},
@@ -166,6 +167,7 @@ INSTRUCTION_MAP = {
     "bullets":      t.BULLETS_INSTRUCTION,
     "qa_pairs":     t.QA_PAIRS_INSTRUCTION,
     "question":     t.QUESTION_FROM_PASSAGE_INSTRUCTION,
+    "questions_list": t.QUESTIONS_LIST_INSTRUCTION,
     "fact":         t.FACT_FROM_PASSAGE_INSTRUCTION,
     "answer":       t.QA_ANSWER_INSTRUCTION,
     "rephrase":     t.REPHRASE_INSTRUCTION,
@@ -178,6 +180,7 @@ INSTRUCTION_MAP_JSON = {
     "bullets":      t.BULLETS_INSTRUCTION_JSON,
     "qa_pairs":     t.QA_PAIRS_INSTRUCTION_JSON,
     "question":     t.QUESTION_FROM_PASSAGE_INSTRUCTION_JSON,
+    "questions_list": t.QUESTIONS_LIST_INSTRUCTION_JSON,
     "fact":         t.FACT_FROM_PASSAGE_INSTRUCTION_JSON,
     "answer":       t.QA_ANSWER_INSTRUCTION_JSON,
     "rephrase":     t.REPHRASE_INSTRUCTION_JSON,
@@ -278,16 +281,22 @@ def _fmt_stats(stats: dict) -> str:
     )
 
 
-JSON_OUTPUT_TYPES = {
-    "bullets":      BulletsOutput,
-    "qa_pairs":     QAPairsOutput,
-    "question":     QuestionOutput,
-    "fact":         FactOutput,
-    "answer":       AnswerOutput,
-    "rephrase":     RephraseOutput,
-    "continuation": ContinuationOutput,
-    "triplets":     TripletsOutput,
-    "comparison":   ComparisonOutput,
+# Modes that use outlines for structured generation
+OUTLINES_MODES = {
+    "bullets":        BulletsOutput,
+    "qa_pairs":       QAPairsOutput,
+    "questions_list": list[str],
+    "triplets":       TripletsOutput,
+}
+
+# Modes that just wrap text output in a JSON key
+WRAPPER_MODES = {
+    "question":     "question",
+    "fact":         "fact",
+    "answer":       "answer",
+    "rephrase":     "text",
+    "continuation": "text",
+    "comparison":   "comparison",
 }
 
 
@@ -305,12 +314,20 @@ def generate_stream(mode_choice, user_text, user_text2, fmt="text"):
     stats_text = ""
 
     if fmt == "json":
-        output_type = JSON_OUTPUT_TYPES[key]
         for idx in range(n):
             try:
-                raw = researcher._backend.generate_json(
-                    prompt, output_type, max_new_tokens=MAX_NEW_TOKENS
-                )
+                if key in OUTLINES_MODES:
+                    output_type = OUTLINES_MODES[key]
+                    raw = researcher._backend.generate_json(
+                        prompt, output_type, max_new_tokens=MAX_NEW_TOKENS
+                    )
+                    if key == "questions_list":
+                        raw = json.dumps({"questions": json.loads(raw)})
+                else:
+                    text = researcher._backend.generate(
+                        prompt, temperature=temp, max_new_tokens=MAX_NEW_TOKENS
+                    )
+                    raw = json.dumps({WRAPPER_MODES[key]: text.strip()})
                 results[idx] = _maybe_prettify(raw)
                 yield [stats_text] + results
             except Exception as e:

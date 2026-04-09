@@ -51,11 +51,12 @@ class MLXBackend(Backend):
 
     def generate_json(self, prompt: str, output_type, **kwargs) -> str:
         import outlines
-        import mlx_lm as mlx_lm_module
 
         max_new_tokens = kwargs.pop("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
         outlines_model = outlines.from_mlxlm(self.model, self.tokenizer)
-        return outlines_model(prompt, output_type=output_type, max_tokens=max_new_tokens)
+        result = outlines_model(prompt, output_type=output_type, max_tokens=max_new_tokens)
+        print(f"\n[RAW JSON OUTPUT]\n{result}\n[/RAW JSON OUTPUT]\n", flush=True)
+        return result
 
     def stream(self, prompt: str, **kwargs):
         from mlx_lm import stream_generate
@@ -129,7 +130,9 @@ class HFBackend(Backend):
 
         max_new_tokens = kwargs.pop("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
         outlines_model = outlines.from_transformers(self.model, self.tokenizer)
-        return outlines_model(prompt, output_type=output_type, max_new_tokens=max_new_tokens)
+        result = outlines_model(prompt, output_type=output_type, max_new_tokens=max_new_tokens)
+        print(f"\n[RAW JSON OUTPUT]\n{result}\n[/RAW JSON OUTPUT]\n", flush=True)
+        return result
 
     def stream(self, prompt: str, **kwargs):
         import time

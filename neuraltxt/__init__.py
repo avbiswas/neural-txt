@@ -1,7 +1,7 @@
 from .model import NeuralTxt
 from .types import (
     QAPair, Triplet, RetrievalResult,
-    BulletsOutput, QAPairsOutput, QuestionOutput, FactOutput,
+    BulletsOutput, QAPairsOutput, QuestionOutput, QuestionsListOutput, FactOutput,
     AnswerOutput, RephraseOutput, ContinuationOutput,
     TripletsOutput, ComparisonOutput, RetrievalOutput,
 )
@@ -9,7 +9,7 @@ from .types import (
 __all__ = [
     "NeuralTxt",
     "QAPair", "Triplet", "RetrievalResult",
-    "BulletsOutput", "QAPairsOutput", "QuestionOutput", "FactOutput",
+    "BulletsOutput", "QAPairsOutput", "QuestionOutput", "QuestionsListOutput", "FactOutput",
     "AnswerOutput", "RephraseOutput", "ContinuationOutput",
     "TripletsOutput", "ComparisonOutput", "RetrievalOutput",
 ]

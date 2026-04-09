@@ -21,6 +21,10 @@ QA_PAIRS_INSTRUCTION = (
 
 QUESTION_FROM_PASSAGE_INSTRUCTION = "Generate a question from this passage"
 
+QUESTIONS_LIST_INSTRUCTION = (
+    "Generate a set of questions from this passage in markdown format."
+)
+
 FACT_FROM_PASSAGE_INSTRUCTION = (
     "Generate an important fact or piece of information from this passage"
 )
@@ -91,6 +95,10 @@ QA_PAIRS_INSTRUCTION_JSON = (
 
 QUESTION_FROM_PASSAGE_INSTRUCTION_JSON = (
     "Generate a question from this passage\nRespond in JSON."
+)
+
+QUESTIONS_LIST_INSTRUCTION_JSON = (
+    "Generate a list of questions from this passage. Return a JSON array of strings."
 )
 
 FACT_FROM_PASSAGE_INSTRUCTION_JSON = (

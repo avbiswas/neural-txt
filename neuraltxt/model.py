@@ -6,6 +6,7 @@ from .tasks import (
     BULLETS_INSTRUCTION,
     QA_PAIRS_INSTRUCTION,
     QUESTION_FROM_PASSAGE_INSTRUCTION,
+    QUESTIONS_LIST_INSTRUCTION,
     FACT_FROM_PASSAGE_INSTRUCTION,
     QA_ANSWER_INSTRUCTION,
     REPHRASE_INSTRUCTION,
@@ -16,6 +17,7 @@ from .tasks import (
     BULLETS_INSTRUCTION_JSON,
     QA_PAIRS_INSTRUCTION_JSON,
     QUESTION_FROM_PASSAGE_INSTRUCTION_JSON,
+    QUESTIONS_LIST_INSTRUCTION_JSON,
     FACT_FROM_PASSAGE_INSTRUCTION_JSON,
     QA_ANSWER_INSTRUCTION_JSON,
     REPHRASE_INSTRUCTION_JSON,
@@ -29,13 +31,14 @@ from .tasks import (
 )
 from .parsing import (
     parse_bullets,
+    parse_questions_list,
     parse_qa_pairs,
     parse_triplets,
     parse_retrieval,
 )
 from .types import (
     QAPair, Triplet, RetrievalResult,
-    BulletsOutput, QAPairsOutput, QuestionOutput, FactOutput,
+    BulletsOutput, QAPairsOutput, QuestionOutput, QuestionsListOutput, FactOutput,
     AnswerOutput, RephraseOutput, ContinuationOutput,
     TripletsOutput, ComparisonOutput, RetrievalOutput,
 )
@@ -112,41 +115,49 @@ class NeuralTxt:
 
     def generate_question(self, passage: str, json: bool = False, **kwargs) -> str | QuestionOutput:
         """Generate a single question from a passage."""
+        raw = self._run(QUESTION_FROM_PASSAGE_INSTRUCTION, passage, **kwargs)
         if json:
-            raw = self._run_json(QUESTION_FROM_PASSAGE_INSTRUCTION_JSON, passage, QuestionOutput, **kwargs)
-            return QuestionOutput.model_validate_json(raw)
-        return self._run(QUESTION_FROM_PASSAGE_INSTRUCTION, passage, **kwargs)
+            return QuestionOutput(question=raw.strip())
+        return raw
+
+    def generate_questions_list(self, passage: str, json: bool = False, **kwargs) -> list[str] | QuestionsListOutput:
+        """Generate a list of questions from a passage."""
+        if json:
+            import json as json_mod
+            raw = self._run_json(QUESTIONS_LIST_INSTRUCTION_JSON, passage, list[str], **kwargs)
+            return QuestionsListOutput(questions=json_mod.loads(raw))
+        raw = self._run(QUESTIONS_LIST_INSTRUCTION, passage, **kwargs)
+        return parse_questions_list(raw)
 
     def extract_fact(self, passage: str, json: bool = False, **kwargs) -> str | FactOutput:
         """Extract a single important fact from a passage."""
+        raw = self._run(FACT_FROM_PASSAGE_INSTRUCTION, passage, **kwargs)
         if json:
-            raw = self._run_json(FACT_FROM_PASSAGE_INSTRUCTION_JSON, passage, FactOutput, **kwargs)
-            return FactOutput.model_validate_json(raw)
-        return self._run(FACT_FROM_PASSAGE_INSTRUCTION, passage, **kwargs)
+            return FactOutput(fact=raw.strip())
+        return raw
 
     def answer(self, question: str, passage: str, json: bool = False, **kwargs) -> str | AnswerOutput:
         """Answer a question given a supporting passage."""
         user_input = build_qa_answer_input(self._preprocess(passage), self._preprocess(question))
-        if json:
-            prompt = self._build_prompt(QA_ANSWER_INSTRUCTION_JSON, user_input)
-            raw = self._backend.generate_json(prompt, AnswerOutput, **kwargs)
-            return AnswerOutput.model_validate_json(raw)
         prompt = self._build_prompt(QA_ANSWER_INSTRUCTION, user_input)
-        return self._backend.generate(prompt, **kwargs)
+        raw = self._backend.generate(prompt, **kwargs)
+        if json:
+            return AnswerOutput(answer=raw.strip())
+        return raw
 
     def rephrase(self, passage: str, json: bool = False, **kwargs) -> str | RephraseOutput:
         """Rephrase and elaborate a passage."""
+        raw = self._run(REPHRASE_INSTRUCTION, passage, **kwargs)
         if json:
-            raw = self._run_json(REPHRASE_INSTRUCTION_JSON, passage, RephraseOutput, **kwargs)
-            return RephraseOutput.model_validate_json(raw)
-        return self._run(REPHRASE_INSTRUCTION, passage, **kwargs)
+            return RephraseOutput(text=raw.strip())
+        return raw
 
     def continue_from(self, passage_start: str, json: bool = False, **kwargs) -> str | ContinuationOutput:
         """Generate a continuation from the beginning of a passage."""
+        raw = self._run(CONTINUATION_INSTRUCTION, passage_start, **kwargs)
         if json:
-            raw = self._run_json(CONTINUATION_INSTRUCTION_JSON, passage_start, ContinuationOutput, **kwargs)
-            return ContinuationOutput.model_validate_json(raw)
-        return self._run(CONTINUATION_INSTRUCTION, passage_start, **kwargs)
+            return ContinuationOutput(text=raw.strip())
+        return raw
 
     def extract_triplets(self, passage: str, json: bool = False, **kwargs) -> list[Triplet] | TripletsOutput:
         """Extract knowledge graph (subject, relation, object) triplets."""
@@ -159,12 +170,11 @@ class NeuralTxt:
     def compare(self, passage_a: str, passage_b: str, json: bool = False, **kwargs) -> str | ComparisonOutput:
         """Generate a detailed comparison of two passages."""
         user_input = build_comparison_input(self._preprocess(passage_a), self._preprocess(passage_b))
-        if json:
-            prompt = self._build_prompt(COMPARISON_INSTRUCTION_JSON, user_input)
-            raw = self._backend.generate_json(prompt, ComparisonOutput, **kwargs)
-            return ComparisonOutput.model_validate_json(raw)
         prompt = self._build_prompt(COMPARISON_INSTRUCTION, user_input)
-        return self._backend.generate(prompt, **kwargs)
+        raw = self._backend.generate(prompt, **kwargs)
+        if json:
+            return ComparisonOutput(comparison=raw.strip())
+        return raw
 
     def find_relevant(
         self, question: str, passages: list[str], json: bool = False, **kwargs
