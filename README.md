@@ -2,6 +2,8 @@
 
 Structured NLP tasks powered by a fine-tuned 135M parameter language model. Extract bullets, generate Q&A pairs, build knowledge graphs, and more — all running locally. Narrow vertical local intelligence that runs super cheaply in resource constrained envs.
 
+https://github.com/user-attachments/assets/04774af0-dc51-42e7-b2a6-d6f50bf4e258
+
 ## Install
 
 ```bash
