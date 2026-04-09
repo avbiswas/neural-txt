@@ -1,6 +1,6 @@
 """
 NeuralTxt — terminal-style Gradio demo with parallel streaming.
-Usage: uv run instruction_tuning/app.py models/mlx/my-model [--mlx]
+Usage: uv run app.py [--mlx]
 """
 import sys, os, argparse, re, json, ast
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -27,13 +27,12 @@ MAX_NEW_TOKENS = 512
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 parser = argparse.ArgumentParser()
-parser.add_argument("model_path", help="Path to model directory")
 parser.add_argument("--mlx", action="store_true", help="Use MLX backend")
 parser.add_argument("--temperature", type=float, default=0.4, help="Sampling temperature")
 parser.add_argument("-n", "--num-generations", type=int, default=2, choices=[1, 2, 3, 4], help="Number of generations", dest="n")
 args, _ = parser.parse_known_args()
 
-researcher = NeuralTxt(args.model_path, backend="mlx" if args.mlx else "hf")
+researcher = NeuralTxt(backend="mlx" if args.mlx else "hf")
 
 # ── Theme + CSS ───────────────────────────────────────────────────────────────
 

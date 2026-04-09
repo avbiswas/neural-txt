@@ -90,11 +90,11 @@ Pass a custom path: `NeuralTxt("path/to/model", backend="hf")`
 ```bash
 pip install neuraltxt[app]
 
-# MLX
-python app.py paperbd/smollm_135M_neuraltxt_mlx_v1 --mlx
+# HuggingFace (default)
+python app.py
 
-# HuggingFace
-python app.py paperbd/smollm_135M_neuraltxt_v1
+# MLX (Apple Silicon)
+python app.py --mlx
 
 # Options
 #   --temperature 0.4    sampling temperature (default 0.4)
