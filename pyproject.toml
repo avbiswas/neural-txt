@@ -1,5 +1,5 @@
 [project]
-name = "neuraltxt"
+name = "neural-txt"
 version = "0.1.0"
 description = "Structured NLP tasks powered by a fine-tuned small language model"
 readme = "README.md"

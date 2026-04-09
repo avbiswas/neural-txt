@@ -17,13 +17,13 @@ If you find this helpful, consider supporting on Patreon — it hosts all code, 
 
 ```bash
 # Base (no inference backend)
-pip install neuraltxt
+pip install neural-txt
 
 # With HuggingFace backend (torch)
-pip install neuraltxt[hf]
+pip install neural-txt[hf]
 
 # With MLX backend (Apple Silicon)
-pip install neuraltxt[mlx]
+pip install neural-txt[mlx]
 ```
 
 ## Quick start
@@ -89,8 +89,8 @@ for t in triplets.triplets:
 
 | Backend | Default model |
 |---|---|
-| `hf` | [`paperbd/smollm_135M_neuraltxt_v1`](https://huggingface.co/paperbd/smollm_135M_neuraltxt_v1) |
-| `mlx` | [`paperbd/smollm_135M_neuraltxt_mlx_v1`](https://huggingface.co/paperbd/smollm_135M_neuraltxt_mlx_v1) |
+| `hf` | [`paperbd/smollm_135M_neuraltxt_dpo_v1`](https://huggingface.co/paperbd/smollm_135M_neuraltxt_dpo_v1) |
+| `mlx` | [`paperbd/smollm_135M_neuraltxt_dpo_mlx_v1`](https://huggingface.co/paperbd/smollm_135M_neuraltxt_dpo_mlx_v1) |
 
 Pass a custom path: `NeuralTxt("path/to/model", backend="hf")`
 
@@ -100,7 +100,7 @@ Pass a custom path: `NeuralTxt("path/to/model", backend="hf")`
 ## Gradio demo
 
 ```bash
-pip install neuraltxt[app]
+pip install neural-txt[app]
 
 # HuggingFace (default)
 python app.py

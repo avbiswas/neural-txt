@@ -43,8 +43,8 @@ from .types import (
     TripletsOutput, ComparisonOutput, RetrievalOutput,
 )
 
-DEFAULT_HF_MODEL = "paperbd/smollm_135M_neuraltxt_v1"
-DEFAULT_MLX_MODEL = "paperbd/smollm_135M_neuraltxt_mlx_v1"
+DEFAULT_HF_MODEL = "paperbd/smollm_135M_neuraltxt_dpo_v1"
+DEFAULT_MLX_MODEL = "paperbd/smollm_135M_neuraltxt_mlx_dpo_v1"
 
 
 class NeuralTxt:
