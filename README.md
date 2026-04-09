@@ -4,6 +4,15 @@ Structured NLP tasks powered by a fine-tuned 135M parameter language model. Extr
 
 https://github.com/user-attachments/assets/04774af0-dc51-42e7-b2a6-d6f50bf4e258
 
+
+
+## Support
+
+If you find this helpful, consider supporting on Patreon — it hosts all code, projects, slides, and write-ups from the YouTube channel.
+
+[<img src="https://c5.patreon.com/external/logo/become_a_patron_button.png" alt="Become a Patron!" width="200">](https://www.patreon.com/NeuralBreakdownwithAVB)
+
+
 ## Install
 
 ```bash
@@ -80,10 +89,13 @@ for t in triplets.triplets:
 
 | Backend | Default model |
 |---|---|
-| `hf` | `paperbd/smollm_135M_neuraltxt_v1` |
-| `mlx` | `paperbd/smollm_135M_neuraltxt_mlx_v1` |
+| `hf` | [`paperbd/smollm_135M_neuraltxt_v1`](https://huggingface.co/paperbd/smollm_135M_neuraltxt_v1) |
+| `mlx` | [`paperbd/smollm_135M_neuraltxt_mlx_v1`](https://huggingface.co/paperbd/smollm_135M_neuraltxt_mlx_v1) |
 
 Pass a custom path: `NeuralTxt("path/to/model", backend="hf")`
+
+- Training dataset: [`paperbd/paper_instructions_300K-v1`](https://huggingface.co/datasets/paperbd/paper_instructions_300K-v1)
+- Synthetic data generation: [`text-albumentations`](https://github.com/avbiswas/text-albumentations)
 
 ## Gradio demo
 
