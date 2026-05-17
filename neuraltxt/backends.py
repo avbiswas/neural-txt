@@ -8,11 +8,26 @@ from abc import ABC, abstractmethod
 
 DEFAULT_MAX_NEW_TOKENS = 512
 DEFAULT_TEMPERATURE = 0.0
+DEFAULT_NUM_BEAMS = 1
+
+
+def _get_num_beams(kwargs: dict) -> int:
+    num_beams = kwargs.pop("num_beams", DEFAULT_NUM_BEAMS)
+    try:
+        num_beams = int(num_beams)
+    except (TypeError, ValueError):
+        raise ValueError(f"num_beams must be an integer, got {num_beams!r}") from None
+    if num_beams < 1:
+        raise ValueError(f"num_beams must be >= 1, got {num_beams}")
+    return num_beams
 
 
 class Backend(ABC):
     @abstractmethod
     def generate(self, prompt: str, **kwargs) -> str: ...
+
+    @abstractmethod
+    def generate_many(self, prompt: str, **kwargs) -> list[str]: ...
 
     @abstractmethod
     def generate_json(self, prompt: str, output_type, **kwargs) -> str: ...
@@ -33,26 +48,34 @@ class MLXBackend(Backend):
         self.model, self.tokenizer = load(model_path)
 
     def generate(self, prompt: str, **kwargs) -> str:
+        return self.generate_many(prompt, **kwargs)[0]
+
+    def generate_many(self, prompt: str, **kwargs) -> list[str]:
         from mlx_lm import generate as mlx_generate
         from mlx_lm.sample_utils import make_sampler
 
         temperature = kwargs.pop("temperature", DEFAULT_TEMPERATURE)
         max_new_tokens = kwargs.pop("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
+        num_beams = _get_num_beams(kwargs)
 
-        return mlx_generate(
-            self.model,
-            self.tokenizer,
-            prompt=prompt,
-            max_tokens=max_new_tokens,
-            sampler=make_sampler(temp=temperature),
-            verbose=False,
-            **kwargs,
-        )
+        return [
+            mlx_generate(
+                self.model,
+                self.tokenizer,
+                prompt=prompt,
+                max_tokens=max_new_tokens,
+                sampler=make_sampler(temp=temperature),
+                verbose=False,
+                **kwargs,
+            )
+            for _ in range(num_beams)
+        ]
 
     def generate_json(self, prompt: str, output_type, **kwargs) -> str:
         import outlines
 
         max_new_tokens = kwargs.pop("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
+        _get_num_beams(kwargs)
         outlines_model = outlines.from_mlxlm(self.model, self.tokenizer)
         result = outlines_model(prompt, output_type=output_type, max_tokens=max_new_tokens)
         print(f"\n[RAW JSON OUTPUT]\n{result}\n[/RAW JSON OUTPUT]\n", flush=True)
@@ -63,6 +86,7 @@ class MLXBackend(Backend):
         from mlx_lm.sample_utils import make_sampler
         temperature = kwargs.pop("temperature", DEFAULT_TEMPERATURE)
         max_new_tokens = kwargs.pop("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
+        _get_num_beams(kwargs)
         self._last_stats = {}
         response = None
         full_text = ""
@@ -102,26 +126,45 @@ class HFBackend(Backend):
         self._torch = torch
 
     def generate(self, prompt: str, **kwargs) -> str:
+        return self.generate_many(prompt, **kwargs)[0]
+
+    def generate_many(self, prompt: str, **kwargs) -> list[str]:
         temperature = kwargs.pop("temperature", DEFAULT_TEMPERATURE)
         max_new_tokens = kwargs.pop("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
+        num_beams = _get_num_beams(kwargs)
+        kwargs.pop("num_return_sequences", None)
 
-        input_ids = self.tokenizer(
-            prompt, return_tensors="pt"
-        ).input_ids.to(self.model.device)
+        inputs = self.tokenizer(prompt, return_tensors="pt")
+        input_ids = inputs.input_ids.to(self.model.device)
+        attention_mask = getattr(inputs, "attention_mask", None)
+        if attention_mask is not None:
+            attention_mask = attention_mask.to(self.model.device)
 
-        with self._torch.no_grad():
-            output_ids = self.model.generate(
-                input_ids=input_ids,
-                max_new_tokens=max_new_tokens,
+        generation_kwargs = dict(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            max_new_tokens=max_new_tokens,
+            eos_token_id=self.tokenizer.eos_token_id,
+            pad_token_id=self.tokenizer.eos_token_id,
+            **kwargs,
+        )
+        if num_beams > 1:
+            generation_kwargs.update(
+                do_sample=False,
+                num_beams=num_beams,
+                num_return_sequences=num_beams,
+            )
+        else:
+            generation_kwargs.update(
                 do_sample=temperature > 0,
                 temperature=temperature if temperature > 0 else 1.0,
-                eos_token_id=self.tokenizer.eos_token_id,
-                pad_token_id=self.tokenizer.eos_token_id,
-                **kwargs,
             )
 
-        return self.tokenizer.decode(
-            output_ids[0][input_ids.shape[1]:],
+        with self._torch.no_grad():
+            output_ids = self.model.generate(**generation_kwargs)
+
+        return self.tokenizer.batch_decode(
+            output_ids[:, input_ids.shape[1]:],
             skip_special_tokens=True,
         )
 
@@ -129,6 +172,7 @@ class HFBackend(Backend):
         import outlines
 
         max_new_tokens = kwargs.pop("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
+        _get_num_beams(kwargs)
         outlines_model = outlines.from_transformers(self.model, self.tokenizer)
         result = outlines_model(prompt, output_type=output_type, max_new_tokens=max_new_tokens)
         print(f"\n[RAW JSON OUTPUT]\n{result}\n[/RAW JSON OUTPUT]\n", flush=True)
@@ -140,10 +184,18 @@ class HFBackend(Backend):
         from threading import Thread
         temperature = kwargs.pop("temperature", DEFAULT_TEMPERATURE)
         max_new_tokens = kwargs.pop("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
-        input_ids = self.tokenizer(prompt, return_tensors="pt").input_ids.to(self.model.device)
+        num_beams = _get_num_beams(kwargs)
+        if num_beams != 1:
+            raise ValueError("stream() only supports num_beams=1")
+        inputs = self.tokenizer(prompt, return_tensors="pt")
+        input_ids = inputs.input_ids.to(self.model.device)
+        attention_mask = getattr(inputs, "attention_mask", None)
+        if attention_mask is not None:
+            attention_mask = attention_mask.to(self.model.device)
         streamer = TextIteratorStreamer(self.tokenizer, skip_special_tokens=True, skip_prompt=True)
         thread = Thread(target=self.model.generate, kwargs=dict(
             input_ids=input_ids,
+            attention_mask=attention_mask,
             max_new_tokens=max_new_tokens,
             do_sample=temperature > 0,
             temperature=temperature if temperature > 0 else 1.0,

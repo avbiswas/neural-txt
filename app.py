@@ -1,6 +1,6 @@
 """
 NeuralTxt — terminal-style Gradio demo with parallel streaming.
-Usage: uv run app.py [--mlx]
+Usage: uv run app.py [--mlx] [--num-beams 2]
 """
 import sys, os, argparse, re, json, ast
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -29,7 +29,16 @@ MAX_NEW_TOKENS = 512
 parser = argparse.ArgumentParser()
 parser.add_argument("--mlx", action="store_true", help="Use MLX backend")
 parser.add_argument("--temperature", type=float, default=0.4, help="Sampling temperature")
-parser.add_argument("-n", "--num-generations", type=int, default=2, choices=[1, 2, 3, 4], help="Number of generations", dest="n")
+parser.add_argument(
+    "-n",
+    "--num-beams",
+    "--num-generations",
+    type=int,
+    default=1,
+    choices=[1, 2, 3, 4],
+    help="Number of beam candidates to generate",
+    dest="num_beams",
+)
 args, _ = parser.parse_known_args()
 
 researcher = NeuralTxt(backend="mlx" if args.mlx else "hf")
@@ -124,7 +133,7 @@ ul[role="listbox"] li:hover { background: #21262d !important; }
 
 # Dynamic textarea height — bypasses Gradio's wrapper div chain
 _PANEL_H   = "100vh - 60px"
-_ROW_COUNT = 2 if args.n > 2 else 1
+_ROW_COUNT = 2 if args.num_beams > 2 else 1
 _BOTTOM_PAD = 80  # aligns with generate button + padding
 _BOX_H     = f"calc(({_PANEL_H}) / {_ROW_COUNT} - {_BOTTOM_PAD}px)"
 
@@ -300,7 +309,7 @@ WRAPPER_MODES = {
 
 
 def generate_stream(mode_choice, user_text, user_text2, fmt="text"):
-    n = args.n
+    n = args.num_beams
     if not user_text.strip():
         yield [""] + ["// no input"] * n
         return
@@ -313,25 +322,52 @@ def generate_stream(mode_choice, user_text, user_text2, fmt="text"):
     stats_text = ""
 
     if fmt == "json":
+        if key not in OUTLINES_MODES:
+            try:
+                texts = researcher._backend.generate_many(
+                    prompt,
+                    temperature=temp,
+                    max_new_tokens=MAX_NEW_TOKENS,
+                    num_beams=n,
+                )
+                results = [
+                    _maybe_prettify(json.dumps({WRAPPER_MODES[key]: text.strip()}))
+                    for text in texts
+                ]
+                yield [stats_text] + results
+            except Exception as e:
+                yield [stats_text] + [f"// error: {e}"] + [""] * (n - 1)
+            return
+
         for idx in range(n):
             try:
-                if key in OUTLINES_MODES:
-                    output_type = OUTLINES_MODES[key]
-                    raw = researcher._backend.generate_json(
-                        prompt, output_type, max_new_tokens=MAX_NEW_TOKENS
-                    )
-                    if key == "questions_list":
-                        raw = json.dumps({"questions": json.loads(raw)})
-                else:
-                    text = researcher._backend.generate(
-                        prompt, temperature=temp, max_new_tokens=MAX_NEW_TOKENS
-                    )
-                    raw = json.dumps({WRAPPER_MODES[key]: text.strip()})
+                output_type = OUTLINES_MODES[key]
+                raw = researcher._backend.generate_json(
+                    prompt, output_type, max_new_tokens=MAX_NEW_TOKENS
+                )
+                if key == "questions_list":
+                    raw = json.dumps({"questions": json.loads(raw)})
                 results[idx] = _maybe_prettify(raw)
                 yield [stats_text] + results
             except Exception as e:
                 results[idx] = f"// error: {e}"
                 yield [stats_text] + results
+        return
+
+    if n > 1 and not args.mlx:
+        try:
+            results = [
+                _maybe_prettify(text)
+                for text in researcher._backend.generate_many(
+                    prompt,
+                    temperature=temp,
+                    max_new_tokens=MAX_NEW_TOKENS,
+                    num_beams=n,
+                )
+            ]
+            yield [stats_text] + results
+        except Exception as e:
+            yield [stats_text] + [f"// error: {e}"] + [""] * (n - 1)
         return
 
     for idx in range(n):
@@ -388,10 +424,10 @@ with gr.Blocks(title="neural-txt") as demo:
 
             gen_btn = gr.Button("▶  GENERATE", variant="primary", elem_classes=["gen-btn"])
 
-        # ── Right: grid from args.n ───────────────────────────────────────────
+        # ── Right: grid from num_beams ────────────────────────────────────────
         with gr.Column(scale=1, elem_id="right-panel"):
             stats_md = gr.Markdown("", elem_classes=["stats-bar"])
-            n = args.n
+            n = args.num_beams
             cols_per_row = 2 if n > 1 else 1
             output_cols  = []
             for row_start in range(0, n, cols_per_row):

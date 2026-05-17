@@ -1,6 +1,6 @@
 [project]
 name = "neural-txt"
-version = "0.1.0"
+version = "0.1.1"
 description = "Structured NLP tasks powered by a fine-tuned small language model"
 readme = "README.md"
 requires-python = ">=3.10"

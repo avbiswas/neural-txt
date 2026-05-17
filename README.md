@@ -49,6 +49,21 @@ pairs = model.generate_qa_pairs(passage)
 triplets = model.extract_triplets(passage)
 ```
 
+## Beam candidates
+
+Generation methods accept `num_beams` with a default of `1`. The public methods
+still return one parsed result: the first / highest-ranked candidate. With the
+HuggingFace backend, `num_beams` is forwarded as beam search with
+`num_return_sequences=num_beams`. With MLX, candidates are generated the same way
+as the existing repeated generation path.
+
+```python
+bullets = model.extract_bullets(passage, num_beams=4)
+```
+
+See [examples/beam_candidates.py](examples/beam_candidates.py) for a complete
+example, including how to inspect all raw beam candidates.
+
 ## JSON mode
 
 Every method supports `json=True` for guaranteed structured output via [outlines](https://github.com/dottxt-ai/outlines):
@@ -89,8 +104,8 @@ for t in triplets.triplets:
 
 | Backend | Default model |
 |---|---|
-| `hf` | [`paperbd/smollm_135M_neuraltxt_dpo_v1`](https://huggingface.co/paperbd/smollm_135M_neuraltxt_dpo_v1) |
-| `mlx` | [`paperbd/smollm_135M_neuraltxt_dpo_mlx_v1`](https://huggingface.co/paperbd/smollm_135M_neuraltxt_dpo_mlx_v1) |
+| `hf` | [`paperbd/smollm_135M_neuraltxt_dpo_v2`](https://huggingface.co/paperbd/smollm_135M_neuraltxt_dpo_v2) |
+| `mlx` | [`paperbd/smollm_135M_neuraltxt_mlx_dpo_v2`](https://huggingface.co/paperbd/smollm_135M_neuraltxt_mlx_dpo_v2) |
 
 Pass a custom path: `NeuralTxt("path/to/model", backend="hf")`
 
@@ -110,5 +125,5 @@ python app.py --mlx
 
 # Options
 #   --temperature 0.4    sampling temperature (default 0.4)
-#   -n 2                 parallel generations, 1-4 (default 2)
+#   --num-beams 2        beam candidates, 1-4 (default 1)
 ```
