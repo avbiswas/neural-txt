@@ -104,8 +104,8 @@ for t in triplets.triplets:
 
 | Backend | Default model |
 |---|---|
-| `hf` | [`paperbd/smollm_135M_neuraltxt_dpo_v2`](https://huggingface.co/paperbd/smollm_135M_neuraltxt_dpo_v2) |
-| `mlx` | [`paperbd/smollm_135M_neuraltxt_mlx_dpo_v2`](https://huggingface.co/paperbd/smollm_135M_neuraltxt_mlx_dpo_v2) |
+| `hf` | [`paperbd/neuraltxt-v1-135M`](https://huggingface.co/paperbd/neuraltxt-v1-135M) |
+| `mlx` | [`paperbd/neuraltxt-v1-135M-mlx`](https://huggingface.co/paperbd/neuraltxt-v1-135M-mlx) |
 
 Pass a custom path: `NeuralTxt("path/to/model", backend="hf")`
 
