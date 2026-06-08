@@ -91,90 +91,137 @@ class NeuralTxt:
         prompt = self._build_prompt(instruction, self._preprocess(user_input))
         return self._backend.generate(prompt, **kwargs)
 
+    def _get_rollouts(self, kwargs: dict) -> int:
+        rollouts = kwargs.pop("rollouts", 1)
+        try:
+            rollouts = int(rollouts)
+        except (TypeError, ValueError):
+            raise ValueError(f"rollouts must be an integer, got {rollouts!r}") from None
+        if rollouts < 1:
+            raise ValueError(f"rollouts must be >= 1, got {rollouts}")
+        return rollouts
+
+    def _run_many(self, instruction: str, user_input: str, rollouts: int, **kwargs) -> list[str]:
+        prompt = self._build_prompt(instruction, self._preprocess(user_input))
+        return self._backend.generate_many(prompt, num_return_sequences=rollouts, **kwargs)
+
     def _run_json(self, instruction_json: str, user_input: str, output_type, **kwargs) -> str:
         prompt = self._build_prompt(instruction_json, self._preprocess(user_input))
         return self._backend.generate_json(prompt, output_type, **kwargs)
+
+    def _run_json_many(
+        self, instruction_json: str, user_input: str, output_type, rollouts: int, **kwargs
+    ) -> list[str]:
+        prompt = self._build_prompt(instruction_json, self._preprocess(user_input))
+        return [
+            self._backend.generate_json(prompt, output_type, **kwargs)
+            for _ in range(rollouts)
+        ]
 
     # ── Public API ────────────────────────────────────────────────────────────
 
     def extract_bullets(self, passage: str, json: bool = False, **kwargs) -> list[str] | BulletsOutput:
         """Extract key points from a passage as a list of strings."""
+        rollouts = self._get_rollouts(kwargs)
         if json:
-            raw = self._run_json(BULLETS_INSTRUCTION_JSON, passage, BulletsOutput, **kwargs)
-            return BulletsOutput.model_validate_json(raw)
-        raw = self._run(BULLETS_INSTRUCTION, passage, **kwargs)
-        return parse_bullets(raw)
+            raws = self._run_json_many(BULLETS_INSTRUCTION_JSON, passage, BulletsOutput, rollouts, **kwargs)
+            outputs = [BulletsOutput.model_validate_json(raw) for raw in raws]
+            return outputs if rollouts > 1 else outputs[0]
+        raws = self._run_many(BULLETS_INSTRUCTION, passage, rollouts, **kwargs)
+        outputs = [parse_bullets(raw) for raw in raws]
+        return outputs if rollouts > 1 else outputs[0]
 
     def generate_qa_pairs(self, passage: str, json: bool = False, **kwargs) -> list[QAPair] | QAPairsOutput:
         """Generate question-answer pairs from a passage."""
+        rollouts = self._get_rollouts(kwargs)
         if json:
-            raw = self._run_json(QA_PAIRS_INSTRUCTION_JSON, passage, QAPairsOutput, **kwargs)
-            return QAPairsOutput.model_validate_json(raw)
-        raw = self._run(QA_PAIRS_INSTRUCTION, passage, **kwargs)
-        return parse_qa_pairs(raw)
+            raws = self._run_json_many(QA_PAIRS_INSTRUCTION_JSON, passage, QAPairsOutput, rollouts, **kwargs)
+            outputs = [QAPairsOutput.model_validate_json(raw) for raw in raws]
+            return outputs if rollouts > 1 else outputs[0]
+        raws = self._run_many(QA_PAIRS_INSTRUCTION, passage, rollouts, **kwargs)
+        outputs = [parse_qa_pairs(raw) for raw in raws]
+        return outputs if rollouts > 1 else outputs[0]
 
     def generate_question(self, passage: str, json: bool = False, **kwargs) -> str | QuestionOutput:
         """Generate a single question from a passage."""
-        raw = self._run(QUESTION_FROM_PASSAGE_INSTRUCTION, passage, **kwargs)
+        rollouts = self._get_rollouts(kwargs)
+        raws = self._run_many(QUESTION_FROM_PASSAGE_INSTRUCTION, passage, rollouts, **kwargs)
         if json:
-            return QuestionOutput(question=raw.strip())
-        return raw
+            outputs = [QuestionOutput(question=raw.strip()) for raw in raws]
+            return outputs if rollouts > 1 else outputs[0]
+        return raws if rollouts > 1 else raws[0]
 
     def generate_questions_list(self, passage: str, json: bool = False, **kwargs) -> list[str] | QuestionsListOutput:
         """Generate a list of questions from a passage."""
+        rollouts = self._get_rollouts(kwargs)
         if json:
             import json as json_mod
-            raw = self._run_json(QUESTIONS_LIST_INSTRUCTION_JSON, passage, list[str], **kwargs)
-            return QuestionsListOutput(questions=json_mod.loads(raw))
-        raw = self._run(QUESTIONS_LIST_INSTRUCTION, passage, **kwargs)
-        return parse_questions_list(raw)
+            raws = self._run_json_many(QUESTIONS_LIST_INSTRUCTION_JSON, passage, list[str], rollouts, **kwargs)
+            outputs = [QuestionsListOutput(questions=json_mod.loads(raw)) for raw in raws]
+            return outputs if rollouts > 1 else outputs[0]
+        raws = self._run_many(QUESTIONS_LIST_INSTRUCTION, passage, rollouts, **kwargs)
+        outputs = [parse_questions_list(raw) for raw in raws]
+        return outputs if rollouts > 1 else outputs[0]
 
     def extract_fact(self, passage: str, json: bool = False, **kwargs) -> str | FactOutput:
         """Extract a single important fact from a passage."""
-        raw = self._run(FACT_FROM_PASSAGE_INSTRUCTION, passage, **kwargs)
+        rollouts = self._get_rollouts(kwargs)
+        raws = self._run_many(FACT_FROM_PASSAGE_INSTRUCTION, passage, rollouts, **kwargs)
         if json:
-            return FactOutput(fact=raw.strip())
-        return raw
+            outputs = [FactOutput(fact=raw.strip()) for raw in raws]
+            return outputs if rollouts > 1 else outputs[0]
+        return raws if rollouts > 1 else raws[0]
 
     def answer(self, question: str, passage: str, json: bool = False, **kwargs) -> str | AnswerOutput:
         """Answer a question given a supporting passage."""
+        rollouts = self._get_rollouts(kwargs)
         user_input = build_qa_answer_input(self._preprocess(passage), self._preprocess(question))
         prompt = self._build_prompt(QA_ANSWER_INSTRUCTION, user_input)
-        raw = self._backend.generate(prompt, **kwargs)
+        raws = self._backend.generate_many(prompt, num_return_sequences=rollouts, **kwargs)
         if json:
-            return AnswerOutput(answer=raw.strip())
-        return raw
+            outputs = [AnswerOutput(answer=raw.strip()) for raw in raws]
+            return outputs if rollouts > 1 else outputs[0]
+        return raws if rollouts > 1 else raws[0]
 
     def rephrase(self, passage: str, json: bool = False, **kwargs) -> str | RephraseOutput:
         """Rephrase and elaborate a passage."""
-        raw = self._run(REPHRASE_INSTRUCTION, passage, **kwargs)
+        rollouts = self._get_rollouts(kwargs)
+        raws = self._run_many(REPHRASE_INSTRUCTION, passage, rollouts, **kwargs)
         if json:
-            return RephraseOutput(text=raw.strip())
-        return raw
+            outputs = [RephraseOutput(text=raw.strip()) for raw in raws]
+            return outputs if rollouts > 1 else outputs[0]
+        return raws if rollouts > 1 else raws[0]
 
     def continue_from(self, passage_start: str, json: bool = False, **kwargs) -> str | ContinuationOutput:
         """Generate a continuation from the beginning of a passage."""
-        raw = self._run(CONTINUATION_INSTRUCTION, passage_start, **kwargs)
+        rollouts = self._get_rollouts(kwargs)
+        raws = self._run_many(CONTINUATION_INSTRUCTION, passage_start, rollouts, **kwargs)
         if json:
-            return ContinuationOutput(text=raw.strip())
-        return raw
+            outputs = [ContinuationOutput(text=raw.strip()) for raw in raws]
+            return outputs if rollouts > 1 else outputs[0]
+        return raws if rollouts > 1 else raws[0]
 
     def extract_triplets(self, passage: str, json: bool = False, **kwargs) -> list[Triplet] | TripletsOutput:
         """Extract knowledge graph (subject, relation, object) triplets."""
+        rollouts = self._get_rollouts(kwargs)
         if json:
-            raw = self._run_json(TRIPLETS_INSTRUCTION_JSON, passage, TripletsOutput, **kwargs)
-            return TripletsOutput.model_validate_json(raw)
-        raw = self._run(TRIPLETS_INSTRUCTION, passage, **kwargs)
-        return parse_triplets(raw)
+            raws = self._run_json_many(TRIPLETS_INSTRUCTION_JSON, passage, TripletsOutput, rollouts, **kwargs)
+            outputs = [TripletsOutput.model_validate_json(raw) for raw in raws]
+            return outputs if rollouts > 1 else outputs[0]
+        raws = self._run_many(TRIPLETS_INSTRUCTION, passage, rollouts, **kwargs)
+        outputs = [parse_triplets(raw) for raw in raws]
+        return outputs if rollouts > 1 else outputs[0]
 
     def compare(self, passage_a: str, passage_b: str, json: bool = False, **kwargs) -> str | ComparisonOutput:
         """Generate a detailed comparison of two passages."""
+        rollouts = self._get_rollouts(kwargs)
         user_input = build_comparison_input(self._preprocess(passage_a), self._preprocess(passage_b))
         prompt = self._build_prompt(COMPARISON_INSTRUCTION, user_input)
-        raw = self._backend.generate(prompt, **kwargs)
+        raws = self._backend.generate_many(prompt, num_return_sequences=rollouts, **kwargs)
         if json:
-            return ComparisonOutput(comparison=raw.strip())
-        return raw
+            outputs = [ComparisonOutput(comparison=raw.strip()) for raw in raws]
+            return outputs if rollouts > 1 else outputs[0]
+        return raws if rollouts > 1 else raws[0]
 
     def find_relevant(
         self, question: str, passages: list[str], json: bool = False, **kwargs
@@ -184,11 +231,17 @@ class NeuralTxt:
         Returns a RetrievalResult with .index (0-based) and .reasoning.
         .index is None if no passage answers the question.
         """
+        rollouts = self._get_rollouts(kwargs)
         user_input = build_retrieval_input(self._preprocess(question), [self._preprocess(p) for p in passages])
         if json:
             prompt = self._build_prompt(RETRIEVAL_INSTRUCTION_JSON, user_input)
-            raw = self._backend.generate_json(prompt, RetrievalOutput, **kwargs)
-            return RetrievalOutput.model_validate_json(raw)
+            raws = [
+                self._backend.generate_json(prompt, RetrievalOutput, **kwargs)
+                for _ in range(rollouts)
+            ]
+            outputs = [RetrievalOutput.model_validate_json(raw) for raw in raws]
+            return outputs if rollouts > 1 else outputs[0]
         prompt = self._build_prompt(RETRIEVAL_INSTRUCTION, user_input)
-        raw = self._backend.generate(prompt, **kwargs)
-        return parse_retrieval(raw, num_passages=len(passages))
+        raws = self._backend.generate_many(prompt, num_return_sequences=rollouts, **kwargs)
+        outputs = [parse_retrieval(raw, num_passages=len(passages)) for raw in raws]
+        return outputs if rollouts > 1 else outputs[0]

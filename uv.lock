@@ -812,11 +812,12 @@ wheels = [
 
 [[package]]
 name = "neural-txt"
-version = "0.1.1"
+version = "0.1.4"
 source = { editable = "." }
 dependencies = [
     { name = "outlines" },
     { name = "pydantic" },
+    { name = "rich" },
     { name = "sentencepiece" },
     { name = "transformers" },
 ]
@@ -840,6 +841,7 @@ requires-dist = [
     { name = "mlx-lm", marker = "extra == 'mlx'" },
     { name = "outlines" },
     { name = "pydantic" },
+    { name = "rich" },
     { name = "sentencepiece" },
     { name = "torch", marker = "extra == 'hf'" },
     { name = "transformers" },

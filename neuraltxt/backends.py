@@ -11,6 +11,23 @@ DEFAULT_TEMPERATURE = 0.0
 DEFAULT_NUM_BEAMS = 1
 
 
+def _get_num_return_sequences(kwargs: dict, num_beams: int) -> int:
+    num_return_sequences = kwargs.pop("num_return_sequences", None)
+    if num_return_sequences is None:
+        return num_beams
+    try:
+        num_return_sequences = int(num_return_sequences)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"num_return_sequences must be an integer, got {num_return_sequences!r}"
+        ) from None
+    if num_return_sequences < 1:
+        raise ValueError(
+            f"num_return_sequences must be >= 1, got {num_return_sequences}"
+        )
+    return num_return_sequences
+
+
 def _get_num_beams(kwargs: dict) -> int:
     num_beams = kwargs.pop("num_beams", DEFAULT_NUM_BEAMS)
     try:
@@ -57,6 +74,7 @@ class MLXBackend(Backend):
         temperature = kwargs.pop("temperature", DEFAULT_TEMPERATURE)
         max_new_tokens = kwargs.pop("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
         num_beams = _get_num_beams(kwargs)
+        num_return_sequences = _get_num_return_sequences(kwargs, num_beams)
 
         return [
             mlx_generate(
@@ -68,7 +86,7 @@ class MLXBackend(Backend):
                 verbose=False,
                 **kwargs,
             )
-            for _ in range(num_beams)
+            for _ in range(num_return_sequences)
         ]
 
     def generate_json(self, prompt: str, output_type, **kwargs) -> str:
@@ -132,7 +150,7 @@ class HFBackend(Backend):
         temperature = kwargs.pop("temperature", DEFAULT_TEMPERATURE)
         max_new_tokens = kwargs.pop("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
         num_beams = _get_num_beams(kwargs)
-        kwargs.pop("num_return_sequences", None)
+        num_return_sequences = _get_num_return_sequences(kwargs, num_beams)
 
         inputs = self.tokenizer(prompt, return_tensors="pt")
         input_ids = inputs.input_ids.to(self.model.device)
@@ -151,13 +169,14 @@ class HFBackend(Backend):
         if num_beams > 1:
             generation_kwargs.update(
                 do_sample=False,
-                num_beams=num_beams,
-                num_return_sequences=num_beams,
+                num_beams=max(num_beams, num_return_sequences),
+                num_return_sequences=num_return_sequences,
             )
         else:
             generation_kwargs.update(
-                do_sample=temperature > 0,
+                do_sample=temperature > 0 or num_return_sequences > 1,
                 temperature=temperature if temperature > 0 else 1.0,
+                num_return_sequences=num_return_sequences,
             )
 
         with self._torch.no_grad():

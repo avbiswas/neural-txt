@@ -33,6 +33,16 @@ class RetrievalResult:
         return f"RetrievalResult(index={self.index}, reasoning={self.reasoning!r})"
 
 
+@dataclass
+class RankedResponse:
+    index: int           # 0-based index into the input responses
+    response: str
+    score: float
+
+    def __repr__(self):
+        return f"RankedResponse(index={self.index}, score={self.score:.4f}, response={self.response!r})"
+
+
 # ── Pydantic schemas (used by outlines JSON mode) ────────────────────────────
 
 class BulletsOutput(BaseModel):

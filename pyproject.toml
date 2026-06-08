@@ -1,6 +1,6 @@
 [project]
 name = "neural-txt"
-version = "0.1.2"
+version = "0.1.4"
 description = "Structured NLP tasks powered by a fine-tuned small language model"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -25,6 +25,7 @@ dependencies = [
     "sentencepiece",
     "outlines",
     "pydantic",
+    "rich",
 ]
 
 [project.urls]
