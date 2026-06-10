@@ -61,25 +61,37 @@ Use it to score one answer, score a batch, or rank candidate responses.
 ```python
 from neuraltxt import NeuralTxtReward
 
-reward = NeuralTxtReward(backend="mlx")  # or backend="hf"
+rm = NeuralTxtReward(backend="mlx")  # or backend="hf"
 
-reference = "The capital of France is Paris."
+score = rm.score(
+    response="Attention is all you need.",
+    reference="All you need is attention.",
+)
+
+print(score)
+# 0.860448
+```
+
+You can also score batches and rank responses:
+
+```python
+reference = "Attention is all you need."
 responses = [
-    "Paris is the capital of France.",
-    "France's capital is Lyon.",
-]
-references = [
-    "The capital of France is Paris.",
-    "The capital of France is Paris.",
+    "All you need is attention.",
+    "You do not need attention.",
 ]
 
-score = reward.score(responses[0], reference)          # float between 0 and 1
-scores = reward.batch_score(responses, reference)      # list[float], batch_size=64
-paired_scores = reward.batch_score(responses, references)
-ranked = reward.rank(responses, reference)             # list[RankedResponse]
+scores = rm.batch_score(responses, reference)
+ranked = rm.rank(responses, reference)
+
+print(scores)
+# [0.885680, 0.396632]
 
 for item in ranked:
     print(item.index, item.score, item.response)
+
+# 0 0.885680 All you need is attention.
+# 1 0.396632 You do not need attention.
 ```
 
 `batch_score()` scores responses in chunks of 64 by default. Pass

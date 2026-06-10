@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from dataclasses import dataclass, replace
+import json
 import re
 from time import perf_counter
 import tracemalloc
@@ -10,6 +11,7 @@ import tracemalloc
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
+from rich.syntax import Syntax
 from rich.table import Table
 from rich.text import Text
 
@@ -310,6 +312,72 @@ def build_metric_table(results: list[Result]) -> Table:
     return table
 
 
+def build_readme_example(rm: NeuralTxtReward) -> Table:
+    single_score = rm.score(
+        response="Attention is all you need.",
+        reference="All you need is attention.",
+    )
+
+    reference = "Attention is all you need."
+    responses = [
+        "All you need is attention.",
+        "Attention is everything you require.",
+        "You do not need attention.",
+    ]
+
+    scores = rm.batch_score(responses, reference)
+    ranked = rm.rank(responses, reference)
+    output = {
+        "score": round(single_score, 6),
+        "scores": [round(score, 6) for score in scores],
+        "ranked": [
+            {
+                "index": item.index,
+                "score": round(item.score, 6),
+                "response": item.response,
+            }
+            for item in ranked
+        ],
+    }
+
+    code = '''from neuraltxt import NeuralTxtReward
+
+rm = NeuralTxtReward()
+score = rm.score(
+    response="Attention is all you need.",
+    reference="All you need is attention.",
+)
+
+reference = "Attention is all you need."
+responses = [
+    "All you need is attention.",
+    "Attention is everything you require.",
+    "You do not need attention.",
+]
+
+scores = rm.batch_score(responses, reference)
+ranked = rm.rank(responses, reference)'''
+
+    section = Table.grid(expand=True)
+    section.add_column(ratio=1)
+    section.add_row(Text("$ pip install neural-txt", style="bold green"))
+    section.add_row(Syntax(code, "python", theme="ansi_dark", word_wrap=True))
+    section.add_row(
+        Panel(
+            Syntax(
+                json.dumps(output, indent=2),
+                "json",
+                theme="ansi_dark",
+                word_wrap=True,
+            ),
+            title="Output",
+            border_style="grey50",
+            style="on grey11",
+        )
+    )
+    return section
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Rich demo for the NeuralTxt reward model."
@@ -341,26 +409,17 @@ def main() -> None:
     args = parser.parse_args()
 
     console = Console(width=120)
-    console.print(
-        Panel.fit(
-            (
-                "[bold]NeuralTxt Reward Tiny[/bold]\n"
-                "Scores whether a response is correct and complete against a "
-                "reference answer. The examples include paraphrases, low lexical "
-                "overlap, number swaps, dataset-name swaps, and unrelated text."
-            ),
-            border_style="blue",
-        )
-    )
 
     with console.status(f"Loading reward model with backend={args.backend!r}..."):
-        reward = NeuralTxtReward(backend=args.backend)
+        rm = NeuralTxtReward(backend=args.backend)
+
+    console.print(build_readme_example(rm))
 
     with console.status("Scoring examples and profiling runtime..."):
         results = [
-            profile_score(reward, example, args.batch_size) for example in EXAMPLES
+            profile_score(rm, example, args.batch_size) for example in EXAMPLES
         ]
-    with console.status("Computing lexical F1 baseline..."):
+    with console.status("Computing lexical baselines..."):
         f1_scores = [
             lexical_f1(example.response, example.reference) for example in EXAMPLES
         ]
