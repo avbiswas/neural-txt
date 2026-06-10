@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, replace
+import re
 from time import perf_counter
 import tracemalloc
 
 from rich import box
 from rich.console import Console
-from rich.console import Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -32,6 +33,7 @@ class Result:
     score: float
     latency_ms: float
     peak_mb: float
+    f1_score: float
 
 
 EXAMPLES = [
@@ -166,7 +168,16 @@ def score_style(score: float) -> str:
     return "red"
 
 
-def verdict(result: Result, threshold: float) -> Text:
+def metric_verdict(score: float, threshold: float, expected_match: bool) -> Text:
+    predicted_match = score >= threshold
+    got_expected = predicted_match == expected_match
+    return Text(
+        f"{'✅' if got_expected else '❌'} {score:.2f}",
+        style="bold green" if got_expected else "bold red",
+    )
+
+
+def reward_verdict(result: Result, threshold: float) -> Text:
     predicted_match = result.score >= threshold
     got_expected = predicted_match == result.example.expected_match
     return Text(
@@ -175,11 +186,23 @@ def verdict(result: Result, threshold: float) -> Text:
     )
 
 
-def expected_label(result: Result, threshold: float) -> Text:
-    predicted_match = result.score >= threshold
-    text = "MATCH" if predicted_match else "NO MATCH"
-    style = "bold green" if predicted_match else "bold red"
-    return Text(text, style=style)
+def _tokens(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9_/%.-]+", text.lower())
+
+
+def lexical_f1(response: str, reference: str) -> float:
+    response_tokens = _tokens(response)
+    reference_tokens = _tokens(reference)
+    if not response_tokens or not reference_tokens:
+        return 0.0
+
+    overlap = sum((Counter(response_tokens) & Counter(reference_tokens)).values())
+    if overlap == 0:
+        return 0.0
+
+    precision = overlap / len(response_tokens)
+    recall = overlap / len(reference_tokens)
+    return 2 * precision * recall / (precision + recall)
 
 
 def bar(value: float, maximum: float, width: int = 24, style: str = "cyan") -> Text:
@@ -207,20 +230,26 @@ def profile_score(
         score=score,
         latency_ms=latency_ms,
         peak_mb=peak_bytes / (1024 * 1024),
+        f1_score=0.0,
     )
 
 
-def build_score_table(results: list[Result], threshold: float) -> Table:
+def build_score_table(
+    results: list[Result],
+    threshold: float,
+    f1_threshold: float,
+) -> Table:
     table = Table(
-        title="NeuralTxt Reward Tiny: reference vs model output",
+        title="NeuralTxt Reward Tiny: scored response/reference pairs",
         box=box.SIMPLE_HEAVY,
-        show_lines=True,
+        show_lines=False,
     )
     table.add_column("Case", style="bold", no_wrap=True, max_width=15)
-    table.add_column("Comparison", overflow="fold", ratio=1)
-    table.add_column("Decision", justify="center", no_wrap=True, width=9)
-    table.add_column("Score", justify="right", no_wrap=True, width=6)
-    table.add_column("OK", justify="center", no_wrap=True, width=4)
+    table.add_column("Response", overflow="fold", ratio=2)
+    table.add_column("Reference", overflow="fold", ratio=2)
+    table.add_column("Reward", justify="right", no_wrap=True, width=6)
+    table.add_column("NeuralTxt", justify="center", no_wrap=True, width=9)
+    table.add_column("F1", justify="center", no_wrap=True, width=7)
 
     previous_expected_match: bool | None = None
     for result in results:
@@ -233,42 +262,26 @@ def build_score_table(results: list[Result], threshold: float) -> Table:
         if result.example.confound:
             label = Text("⚠ ", style="bold yellow") + label
         row_style = "bold" if result.example.confound else None
-        comparison = Text("REF  ", style="bold green")
-        comparison.append_text(
+        table.add_row(
+            label,
+            highlighted_cell(
+                result.example.response,
+                result.example.response_highlights,
+                "bold white on dark_red",
+            ),
             highlighted_cell(
                 result.example.reference,
                 result.example.reference_highlights,
                 "bold black on green",
-            )
-        )
-        comparison.append("\nOUT  ", style="bold red")
-        comparison.append_text(
-            highlighted_cell(
-                result.example.response,
-                result.example.response_highlights,
-                "bold white on red",
-            )
-        )
-        table.add_row(
-            label,
-            comparison,
-            expected_label(result, threshold),
+            ),
             score,
-            verdict(result, threshold),
+            reward_verdict(result, threshold),
+            metric_verdict(
+                result.f1_score, f1_threshold, result.example.expected_match
+            ),
             style=row_style,
         )
     return table
-
-
-def build_score_section(results: list[Result], threshold: float) -> Group:
-    legend = Text()
-    legend.append("Legend: ", style="bold")
-    legend.append("green highlight", style="bold black on green")
-    legend.append(" = reference fact, ")
-    legend.append("red highlight", style="bold white on red")
-    legend.append(" = changed output fact, ")
-    legend.append("⚠ = adversarial confound", style="bold yellow")
-    return Group(legend, build_score_table(results, threshold))
 
 
 def build_metric_table(results: list[Result]) -> Table:
@@ -319,9 +332,15 @@ def main() -> None:
         default=0.5,
         help="Score threshold used for the artificial correct/incorrect verdict.",
     )
+    parser.add_argument(
+        "--f1-threshold",
+        type=float,
+        default=0.75,
+        help="Lexical F1 threshold used for its success/failure verdict.",
+    )
     args = parser.parse_args()
 
-    console = Console()
+    console = Console(width=120)
     console.print(
         Panel.fit(
             (
@@ -341,9 +360,23 @@ def main() -> None:
         results = [
             profile_score(reward, example, args.batch_size) for example in EXAMPLES
         ]
+    with console.status("Computing lexical F1 baseline..."):
+        f1_scores = [
+            lexical_f1(example.response, example.reference) for example in EXAMPLES
+        ]
+        results = [
+            replace(result, f1_score=f1_score)
+            for result, f1_score in zip(results, f1_scores)
+        ]
     results = sorted(results, key=lambda result: not result.example.expected_match)
 
-    console.print(build_score_section(results, args.threshold))
+    console.print(
+        build_score_table(
+            results,
+            args.threshold,
+            args.f1_threshold,
+        )
+    )
     console.print(build_metric_table(results))
     console.print(
         "[dim]Peak memory is measured with tracemalloc during scoring after model "

@@ -60,7 +60,7 @@ class MLXBackend(Backend):
         except ImportError:
             raise ImportError(
                 "MLX backend requires mlx-lm. Install it with:\n\n"
-                '  uv pip install -e ".[mlx]"'
+                '  pip install "neural-txt[mlx]"'
             ) from None
         self.model, self.tokenizer = load(model_path)
 
@@ -131,7 +131,7 @@ class HFBackend(Backend):
         except ImportError:
             raise ImportError(
                 "HuggingFace backend requires torch. Install it with:\n\n"
-                '  uv pip install -e ".[hf]"'
+                '  pip install "neural-txt[hf]"'
             ) from None
         from transformers import AutoModelForCausalLM, AutoTokenizer
 

@@ -123,7 +123,7 @@ class MLXRewardModel:
         except ImportError:
             raise ImportError(
                 "MLX reward backend requires mlx. Install it with:\n\n"
-                '  uv pip install -e ".[mlx]"'
+                '  pip install "neural-txt[mlx]"'
             ) from None
 
         from transformers import AutoTokenizer

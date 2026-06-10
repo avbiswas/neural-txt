@@ -65,7 +65,7 @@ class NeuralTxtReward:
         except ImportError:
             raise ImportError(
                 "NeuralTxtReward requires torch. Install it with:\n\n"
-                '  uv pip install -e ".[hf]"'
+                '  pip install "neural-txt[hf]"'
             ) from None
 
         from transformers import AutoModel, AutoTokenizer
