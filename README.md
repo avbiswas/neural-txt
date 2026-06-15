@@ -52,6 +52,43 @@ pairs = model.generate_qa_pairs(passage)
 triplets = model.extract_triplets(passage)
 ```
 
+Use the reasoning model variant with `reasoning=True`:
+
+```python
+model = NeuralTxt(backend="mlx", reasoning=True)  # or backend="hf"
+answer = model.answer("What mechanism do transformers use?", passage)
+```
+
+Reasoning models emit `<think>...</think>{answer}` internally. NeuralTxt strips
+the leading reasoning block for plain-text methods. In JSON mode, NeuralTxt
+generates the reasoning block first, then uses Outlines constrained decoding for
+the JSON answer.
+`NeuralTxt(reasoning=True)` also switches to the reasoning model system prompt,
+which explicitly asks for `<think>...</think>` reasoning followed by only the
+requested final response.
+
+To keep the reasoning trace, pass `return_reasoning=True`:
+
+```python
+model = NeuralTxt(backend="mlx", reasoning=True, return_reasoning=True)
+result = model.answer("What mechanism do transformers use?", passage)
+
+print(result.output)
+print(result.reasoning)
+```
+
+With `return_reasoning=True`, generation methods return `ReasonedOutput`
+objects containing the normal output, reasoning text, and raw model text. With
+`rollouts > 1`, they return a list of `ReasonedOutput` objects. You can also
+pass `return_reasoning=True` to a single method call.
+
+There is also a short runnable example:
+
+```bash
+HF_HOME=.hf-cache uv run python scripts/reasoning_usage.py
+HF_HOME=.hf-cache uv run python scripts/reasoning_usage.py --mlx --json
+```
+
 ## Reward scoring
 
 `NeuralTxtReward` scores generated responses against a reference answer with
@@ -174,6 +211,8 @@ for t in triplets.triplets:
 |---|---|
 | `NeuralTxt(backend="hf")` | [`paperbd/neuraltxt-v1-135M`](https://huggingface.co/paperbd/neuraltxt-v1-135M) |
 | `NeuralTxt(backend="mlx")` | [`paperbd/neuraltxt-v1-135M-mlx`](https://huggingface.co/paperbd/neuraltxt-v1-135M-mlx) |
+| `NeuralTxt(backend="hf", reasoning=True)` | [`paperbd/neuraltxt-v1-135M-reasoning`](https://huggingface.co/paperbd/neuraltxt-v1-135M-reasoning) |
+| `NeuralTxt(backend="mlx", reasoning=True)` | [`paperbd/neuraltxt-v1-135M-reasoning-mlx`](https://huggingface.co/paperbd/neuraltxt-v1-135M-reasoning-mlx) |
 | `NeuralTxtReward(backend="hf")` | [`paperbd/neuraltxt-reward-tiny`](https://huggingface.co/paperbd/neuraltxt-reward-tiny) |
 | `NeuralTxtReward(backend="mlx")` | [`paperbd/neuraltxt-reward-tiny-mlx`](https://huggingface.co/paperbd/neuraltxt-reward-tiny-mlx) |
 
@@ -193,7 +232,14 @@ python app.py
 # MLX (Apple Silicon)
 python app.py --mlx
 
+# Reasoning model
+python app.py --reasoning
+python app.py --mlx --reasoning
+
 # Options
 #   --temperature 0.4    sampling temperature (default 0.4)
 #   --num-beams 2        beam candidates, 1-4 (default 1)
 ```
+
+When the Gradio app runs with `--reasoning`, each output candidate shows the
+model's reasoning trace in a light italic gray block above the final output.

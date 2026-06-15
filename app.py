@@ -13,12 +13,13 @@ except ImportError:
     sys.exit(1)
 
 from neuraltxt import NeuralTxt
+from neuraltxt.types import ReasonedOutput
 from neuraltxt.types import (
     BulletsOutput, QAPairsOutput, QuestionOutput, QuestionsListOutput, FactOutput,
     AnswerOutput, RephraseOutput, ContinuationOutput,
     TripletsOutput, ComparisonOutput,
 )
-from neuraltxt.tasks import SYSTEM_PROMPT
+from neuraltxt.tasks import SYSTEM_PROMPT, REASONING_SYSTEM_PROMPT
 import neuraltxt.tasks as t
 import gradio as gr
 
@@ -28,6 +29,7 @@ MAX_NEW_TOKENS = 512
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--mlx", action="store_true", help="Use MLX backend")
+parser.add_argument("--reasoning", action="store_true", help="Use the reasoning model")
 parser.add_argument("--temperature", type=float, default=0.4, help="Sampling temperature")
 parser.add_argument(
     "-n",
@@ -41,7 +43,7 @@ parser.add_argument(
 )
 args, _ = parser.parse_known_args()
 
-researcher = NeuralTxt(backend="mlx" if args.mlx else "hf")
+researcher = NeuralTxt(backend="mlx" if args.mlx else "hf", reasoning=args.reasoning)
 
 # ── Theme + CSS ───────────────────────────────────────────────────────────────
 
@@ -81,13 +83,24 @@ footer { display: none !important; }
 /* Green output text */
 .output-box textarea { color: #ffffff !important; font-size: 24px !important; line-height: 1.6 !important; }
 
+/* Reasoning trace */
+.reasoning-box {
+    color: #9aa4af !important;
+    font-size: 13px !important;
+    line-height: 1.55 !important;
+    font-style: italic !important;
+    background: #111820 !important;
+    border-left: 2px solid #30363d !important;
+    padding: 8px 10px !important;
+    margin-bottom: 6px !important;
+    white-space: pre-wrap !important;
+}
+.reasoning-box p { margin: 0 !important; color: #9aa4af !important; }
+
 /* Dropdown list items */
 ul[role="listbox"] { background: #161b22 !important; }
 ul[role="listbox"] li { color: #e6edf3 !important; background: #161b22 !important; }
 ul[role="listbox"] li:hover { background: #21262d !important; }
-
-/* Amber messages preview */
-.messages-box textarea { color: #e3b341 !important; font-size: 11px !important; }
 
 /* Temperature headers */
 .temp-header p {
@@ -98,15 +111,14 @@ ul[role="listbox"] li:hover { background: #21262d !important; }
     margin: 4px 0 2px 0 !important;
 }
 
-/* Left panel textareas — fixed heights, no layout shift
-   Overhead: header(60) + mode block(70) + button(52) + labels(40) + gaps/padding(50) = ~272px */
-#left-panel .input-box textarea {
-    height: calc((100vh - 272px) * 0.28) !important;
+/* Left panel inputs — fixed heights, no layout shift */
+#left-panel .primary-input textarea {
+    height: calc(100vh - 245px) !important;
     overflow-y: auto !important;
     resize: none !important;
 }
-#left-panel .messages-box textarea {
-    height: calc((100vh - 272px) * 0.62) !important;
+#left-panel .secondary-input textarea {
+    height: 130px !important;
     overflow-y: auto !important;
     resize: none !important;
 }
@@ -151,8 +163,16 @@ def _fmt_bullets(items):  return "\n".join(f"- {b}" for b in items)
 def _fmt_qa(pairs):       return "\n\n".join(f"Q: {p.question}\nA: {p.answer}" for p in pairs)
 def _fmt_triplets(items): return "\n".join(f"({t.subject}, {t.relation}, {t.object})" for t in items)
 MULTI_INPUT_MODES = {
-    "answer":     {"label_1": "passage",   "label_2": "question"},
-    "comparison": {"label_1": "passage 1", "label_2": "passage 2"},
+    "answer": {
+        "label_1": "passage",
+        "label_2": "question",
+        "placeholder_2": "Ask a question about the passage...",
+    },
+    "comparison": {
+        "label_1": "passage 1",
+        "label_2": "passage 2",
+        "placeholder_2": "Paste passage 2...",
+    },
 }
 
 MODES = {
@@ -205,29 +225,17 @@ def on_mode_change(choice):
         mi = MULTI_INPUT_MODES[key]
         return (
             gr.update(placeholder=MODES[key]["hint"], label=mi["label_1"]),
-            gr.update(visible=True, label=mi["label_2"], value=""),
+            gr.update(
+                visible=True,
+                label=mi["label_2"],
+                placeholder=mi["placeholder_2"],
+                value="",
+            ),
         )
     return (
         gr.update(placeholder=MODES[key]["hint"], label="input"),
         gr.update(visible=False, value=""),
     )
-
-def build_messages_preview(choice, text, text2, fmt="text"):
-    if not text.strip(): return ""
-    key  = key_from_choice(choice)
-    imap = INSTRUCTION_MAP_JSON if fmt == "json" else INSTRUCTION_MAP
-    inst = imap.get(key, "")
-    if key == "answer":
-        user_content = f"{inst}\n\nPassage: {text}\n\nQuestion: {text2}\nWhat is the answer?"
-    elif key == "comparison":
-        user_content = f"{inst}\n\nPassage 1:\n{text}\n\nPassage 2:\n{text2}"
-    else:
-        user_content = f"{inst}\n\n{text}"
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user",   "content": user_content},
-    ]
-    return json.dumps(messages, indent=2)
 
 # ── JSON pretty-print ─────────────────────────────────────────────────────────
 
@@ -272,8 +280,9 @@ def build_prompt(mode_key, user_text, user_text2, fmt="text"):
     else:
         user_content = user_text
     tok  = researcher._backend.tokenizer
+    system_prompt = REASONING_SYSTEM_PROMPT if args.reasoning else SYSTEM_PROMPT
     msgs = [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
         {"role": "user",   "content": f"{inst}\n\n{user_content}"},
     ]
     return tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
@@ -307,19 +316,119 @@ WRAPPER_MODES = {
     "comparison":   "comparison",
 }
 
+METHOD_MAP = {
+    "bullets": "extract_bullets",
+    "qa_pairs": "generate_qa_pairs",
+    "question": "generate_question",
+    "questions_list": "generate_questions_list",
+    "fact": "extract_fact",
+    "answer": "answer",
+    "rephrase": "rephrase",
+    "continuation": "continue_from",
+    "triplets": "extract_triplets",
+    "comparison": "compare",
+}
+
+
+def _format_public_output(value, fmt="text") -> str:
+    if fmt == "json":
+        if hasattr(value, "model_dump_json"):
+            return _maybe_prettify(value.model_dump_json())
+        return _maybe_prettify(json.dumps(value))
+
+    if isinstance(value, BulletsOutput):
+        return _fmt_bullets(value.bullets)
+    if isinstance(value, QAPairsOutput):
+        return _fmt_qa(value.pairs)
+    if isinstance(value, QuestionsListOutput):
+        return "\n".join(value.questions)
+    if isinstance(value, TripletsOutput):
+        return _fmt_triplets(value.triplets)
+    if isinstance(value, QuestionOutput):
+        return value.question
+    if isinstance(value, FactOutput):
+        return value.fact
+    if isinstance(value, AnswerOutput):
+        return value.answer
+    if isinstance(value, RephraseOutput):
+        return value.text
+    if isinstance(value, ContinuationOutput):
+        return value.text
+    if isinstance(value, ComparisonOutput):
+        return value.comparison
+    if isinstance(value, list):
+        if not value:
+            return ""
+        if all(hasattr(item, "question") and hasattr(item, "answer") for item in value):
+            return _fmt_qa(value)
+        if all(hasattr(item, "subject") and hasattr(item, "relation") and hasattr(item, "object") for item in value):
+            return _fmt_triplets(value)
+        return _fmt_bullets(value)
+    return _maybe_prettify(str(value))
+
+
+def _call_public_method(key, user_text, user_text2, fmt, rollouts):
+    method = getattr(researcher, METHOD_MAP[key])
+    kwargs = {
+        "json": fmt == "json",
+        "rollouts": rollouts,
+        "temperature": args.temperature,
+        "return_reasoning": True,
+    }
+    if key == "answer":
+        return method(user_text2, user_text, **kwargs)
+    if key == "comparison":
+        return method(user_text, user_text2, **kwargs)
+    return method(user_text, **kwargs)
+
+
+def _reasoning_outputs(reasoned, n, fmt):
+    items = reasoned if n > 1 else [reasoned]
+    reasoning = [""] * n
+    outputs = [""] * n
+    for idx, item in enumerate(items[:n]):
+        if isinstance(item, ReasonedOutput):
+            reasoning[idx] = item.reasoning
+            outputs[idx] = _format_public_output(item.output, fmt)
+        else:
+            outputs[idx] = _format_public_output(item, fmt)
+    return reasoning, outputs
+
+
+def _pack(stats_text, reasoning, results):
+    packed = [stats_text]
+    for trace, result in zip(reasoning, results):
+        packed.extend([trace, result])
+    return packed
+
 
 def generate_stream(mode_choice, user_text, user_text2, fmt="text"):
     n = args.num_beams
     if not user_text.strip():
-        yield [""] + ["// no input"] * n
+        yield _pack("", [""] * n, ["// no input"] * n)
         return
 
     key    = key_from_choice(mode_choice)
+    if key in MULTI_INPUT_MODES and not user_text2.strip():
+        missing = MULTI_INPUT_MODES[key]["label_2"]
+        yield _pack("", [""] * n, [f"// missing {missing}"] + [""] * (n - 1))
+        return
+
     prompt = build_prompt(key, user_text, user_text2, fmt)
     temp   = args.temperature
 
     results = [""] * n
+    reasoning = [""] * n
     stats_text = ""
+
+    if args.reasoning:
+        try:
+            reasoned = _call_public_method(key, user_text, user_text2, fmt, n)
+            reasoning, results = _reasoning_outputs(reasoned, n, fmt)
+            yield _pack(stats_text, reasoning, results)
+        except Exception as e:
+            yield _pack(stats_text, reasoning, [f"// error: {e}"] + [""] * (n - 1))
+        return
 
     if fmt == "json":
         if key not in OUTLINES_MODES:
@@ -334,9 +443,9 @@ def generate_stream(mode_choice, user_text, user_text2, fmt="text"):
                     _maybe_prettify(json.dumps({WRAPPER_MODES[key]: text.strip()}))
                     for text in texts
                 ]
-                yield [stats_text] + results
+                yield _pack(stats_text, reasoning, results)
             except Exception as e:
-                yield [stats_text] + [f"// error: {e}"] + [""] * (n - 1)
+                yield _pack(stats_text, reasoning, [f"// error: {e}"] + [""] * (n - 1))
             return
 
         for idx in range(n):
@@ -348,10 +457,10 @@ def generate_stream(mode_choice, user_text, user_text2, fmt="text"):
                 if key == "questions_list":
                     raw = json.dumps({"questions": json.loads(raw)})
                 results[idx] = _maybe_prettify(raw)
-                yield [stats_text] + results
+                yield _pack(stats_text, reasoning, results)
             except Exception as e:
                 results[idx] = f"// error: {e}"
-                yield [stats_text] + results
+                yield _pack(stats_text, reasoning, results)
         return
 
     if n > 1 and not args.mlx:
@@ -365,9 +474,9 @@ def generate_stream(mode_choice, user_text, user_text2, fmt="text"):
                     num_beams=n,
                 )
             ]
-            yield [stats_text] + results
+            yield _pack(stats_text, reasoning, results)
         except Exception as e:
-            yield [stats_text] + [f"// error: {e}"] + [""] * (n - 1)
+            yield _pack(stats_text, reasoning, [f"// error: {e}"] + [""] * (n - 1))
         return
 
     for idx in range(n):
@@ -376,12 +485,12 @@ def generate_stream(mode_choice, user_text, user_text2, fmt="text"):
                 prompt, temperature=temp, max_new_tokens=MAX_NEW_TOKENS
             ):
                 results[idx] += chunk
-                yield [stats_text] + [_maybe_prettify(r) for r in results]
+                yield _pack(stats_text, reasoning, [_maybe_prettify(r) for r in results])
             stats_text = _fmt_stats(getattr(researcher._backend, "_last_stats", {}))
-            yield [stats_text] + [_maybe_prettify(r) for r in results]
+            yield _pack(stats_text, reasoning, [_maybe_prettify(r) for r in results])
         except Exception as e:
             results[idx] = f"// error: {e}"
-            yield [stats_text] + [_maybe_prettify(r) for r in results]
+            yield _pack(stats_text, reasoning, [_maybe_prettify(r) for r in results])
 
 # ── UI ────────────────────────────────────────────────────────────────────────
 
@@ -407,19 +516,13 @@ with gr.Blocks(title="neural-txt") as demo:
             user_box = gr.Textbox(
                 label="input", lines=7,
                 placeholder=MODES[MODE_KEYS[0]]["hint"],
-                elem_classes=["input-box"],
+                elem_classes=["input-box", "primary-input"],
             )
 
             user_box2 = gr.Textbox(
                 label="input 2", lines=4,
                 visible=False,
-                elem_classes=["input-box"],
-            )
-
-            messages_box = gr.Textbox(
-                label="messages", lines=11,
-                interactive=False,
-                elem_classes=["messages-box"],
+                elem_classes=["input-box", "secondary-input"],
             )
 
             gen_btn = gr.Button("▶  GENERATE", variant="primary", elem_classes=["gen-btn"])
@@ -430,29 +533,38 @@ with gr.Blocks(title="neural-txt") as demo:
             n = args.num_beams
             cols_per_row = 2 if n > 1 else 1
             output_cols  = []
+            reasoning_cols = []
             for row_start in range(0, n, cols_per_row):
                 with gr.Row():
                     for i in range(row_start, min(row_start + cols_per_row, n)):
-                        output_cols.append(
-                            gr.Textbox(
-                                show_label=False, lines=14,
-                                interactive=False,
-                                elem_classes=["output-box"],
+                        with gr.Column():
+                            reasoning_cols.append(
+                                gr.Markdown(
+                                    "",
+                                    visible=args.reasoning,
+                                    elem_classes=["reasoning-box"],
+                                )
                             )
-                        )
+                            output_cols.append(
+                                gr.Textbox(
+                                    show_label=False, lines=14,
+                                    interactive=False,
+                                    elem_classes=["output-box"],
+                                )
+                            )
 
     # ── Wiring ────────────────────────────────────────────────────────────────
 
     mode_dd.change(fn=on_mode_change,           inputs=mode_dd,                              outputs=[user_box, user_box2])
-    mode_dd.change(fn=build_messages_preview,  inputs=[mode_dd, user_box, user_box2, fmt_dd], outputs=messages_box)
-    user_box.change(fn=build_messages_preview, inputs=[mode_dd, user_box, user_box2, fmt_dd], outputs=messages_box)
-    user_box2.change(fn=build_messages_preview,inputs=[mode_dd, user_box, user_box2, fmt_dd], outputs=messages_box)
-    fmt_dd.change(fn=build_messages_preview,   inputs=[mode_dd, user_box, user_box2, fmt_dd], outputs=messages_box)
 
     gen_btn.click(
         fn=generate_stream,
         inputs=[mode_dd, user_box, user_box2, fmt_dd],
-        outputs=[stats_md] + output_cols,
+        outputs=[stats_md] + [
+            component
+            for pair in zip(reasoning_cols, output_cols)
+            for component in pair
+        ],
         show_progress=False,
     )
 

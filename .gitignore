@@ -1,3 +1,4 @@
 dist/
+.hf_cache
 *pyc
 *__pycache__*

@@ -1,25 +1,26 @@
 from neuraltxt import NeuralTxtReward, NeuralTxt
 
 
-passage = """
-Claude Code, plugged into your services, APIs, and dependencies via MCP. AI Architect, the context layer for coding agents. Production-ready code in 1-shot.
-"""
+# passage = """
+# We introduce a new language representation model called BERT, which stands for Bidirectional Encoder Representations from Transformers. Unlike recent language representation models, BERT is designed to pre-train deep bidirectional representations from unlabeled text by jointly conditioning on both left and right context in all layers. As a result, the pre-trained BERT model can be fine-tuned with just one additional output layer to create state-of-the-art models for a wide range of tasks, such as question answering and language inference, without substantial task-specific architecture modifications.
+# """
 
-question = "What can Claude Code do"
-reference = "Claude Code, plugged into your services, APIs, and dependencies via MCP. AI Architect, the context layer for coding agents. Production-ready code in 1-shot"
+response = """Precision is 50% of this particular BERT model."""
 
+reference ="""This BERT is around 60% accurate"""
+
+
+ 
 def main() -> None:
-    model = NeuralTxt()
+    # model = NeuralTxt()
     rm = NeuralTxtReward()
-    answers = model.rephrase(
-        passage=passage,
-        temperature=0.7,
-        rollouts=4
-    )
-    rewards = rm.rank(answers, passage)
-    for r in rewards:
-        print()
-        print(r.response, r.score)
+    # answers = model.rephrase(
+    #     passage=passage,
+    #     temperature=0.7,
+    #     rollouts=4
+    # )
+    rewards = rm.score(response, reference)
+    print(rewards)
 
         
 

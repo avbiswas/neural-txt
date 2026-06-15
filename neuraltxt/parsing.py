@@ -6,6 +6,22 @@ import re
 from .types import QAPair, Triplet, RetrievalResult
 
 
+def split_thinking(text: str) -> tuple[str, str]:
+    """Return (answer, reasoning) from a leading <think>...</think> block."""
+    match = re.match(r"^\s*<think\b[^>]*>(.*?)</think>\s*(.*)$", text, flags=re.DOTALL)
+    if not match:
+        if "</think>" in text:
+            reasoning, answer = text.split("</think>", 1)
+            return answer.strip(), reasoning.strip()
+        return text.strip(), ""
+    return match.group(2).strip(), match.group(1).strip()
+
+
+def strip_thinking(text: str) -> str:
+    """Remove a leading reasoning trace from model output."""
+    return split_thinking(text)[0]
+
+
 def parse_bullets(text: str) -> list[str]:
     lines = text.strip().splitlines()
     bullets = []

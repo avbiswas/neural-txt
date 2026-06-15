@@ -1,5 +1,10 @@
 from dataclasses import dataclass
-from pydantic import BaseModel
+from typing import Annotated
+from pydantic import BaseModel, Field
+
+
+ShortText = Annotated[str, Field(max_length=512)]
+LongText = Annotated[str, Field(max_length=2048)]
 
 
 # ── Dataclasses (used by parser-based output) ────────────────────────────────
@@ -43,47 +48,57 @@ class RankedResponse:
         return f"RankedResponse(index={self.index}, score={self.score:.4f}, response={self.response!r})"
 
 
+@dataclass
+class ReasonedOutput:
+    output: object
+    reasoning: str
+    raw: str
+
+    def __repr__(self):
+        return f"ReasonedOutput(output={self.output!r}, reasoning={self.reasoning!r})"
+
+
 # ── Pydantic schemas (used by outlines JSON mode) ────────────────────────────
 
 class BulletsOutput(BaseModel):
-    bullets: list[str]
+    bullets: list[ShortText]
 
 class QAPairSchema(BaseModel):
-    question: str
-    answer: str
+    question: ShortText
+    answer: LongText
 
 class QAPairsOutput(BaseModel):
     pairs: list[QAPairSchema]
 
 class QuestionOutput(BaseModel):
-    question: str
+    question: ShortText
 
 class QuestionsListOutput(BaseModel):
-    questions: list[str]
+    questions: list[ShortText]
 
 class FactOutput(BaseModel):
-    fact: str
+    fact: ShortText
 
 class AnswerOutput(BaseModel):
-    answer: str
+    answer: LongText
 
 class RephraseOutput(BaseModel):
-    text: str
+    text: LongText
 
 class ContinuationOutput(BaseModel):
-    text: str
+    text: LongText
 
 class TripletSchema(BaseModel):
-    subject: str
-    relation: str
-    object: str
+    subject: ShortText
+    relation: ShortText
+    object: ShortText
 
 class TripletsOutput(BaseModel):
     triplets: list[TripletSchema]
 
 class ComparisonOutput(BaseModel):
-    comparison: str
+    comparison: LongText
 
 class RetrievalOutput(BaseModel):
     passage_index: int | None
-    reasoning: str
+    reasoning: ShortText

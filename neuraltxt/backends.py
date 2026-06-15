@@ -50,7 +50,20 @@ class Backend(ABC):
     def generate_json(self, prompt: str, output_type, **kwargs) -> str: ...
 
     @abstractmethod
+    def generate_reasoned_json(self, prompt: str, output_type, **kwargs) -> str: ...
+
+    @abstractmethod
     def stream(self, prompt: str, **kwargs): ...  # yields str chunks
+
+
+def _reasoning_prefix(text: str) -> str:
+    end_tag = "</think>"
+    if end_tag in text:
+        return text[: text.index(end_tag) + len(end_tag)]
+    text = text.strip()
+    if text.startswith("<think>"):
+        return f"{text}{end_tag}"
+    return f"<think>{text}</think>"
 
 
 class MLXBackend(Backend):
@@ -98,6 +111,42 @@ class MLXBackend(Backend):
         result = outlines_model(prompt, output_type=output_type, max_tokens=max_new_tokens)
         print(f"\n[RAW JSON OUTPUT]\n{result}\n[/RAW JSON OUTPUT]\n", flush=True)
         return result
+
+    def generate_reasoned_json(self, prompt: str, output_type, **kwargs) -> str:
+        import outlines
+        from mlx_lm import stream_generate
+        from mlx_lm.sample_utils import make_sampler
+
+        temperature = kwargs.pop("temperature", DEFAULT_TEMPERATURE)
+        max_new_tokens = kwargs.pop("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
+        reasoning_max_new_tokens = kwargs.pop("reasoning_max_new_tokens", 256)
+        _get_num_beams(kwargs)
+
+        reasoning_text = "<think>"
+        for response in stream_generate(
+            self.model,
+            self.tokenizer,
+            f"{prompt}<think>",
+            sampler=make_sampler(temp=temperature),
+            max_tokens=reasoning_max_new_tokens,
+        ):
+            reasoning_text += response.text
+            if "</think>" in reasoning_text:
+                break
+
+        prefix = _reasoning_prefix(reasoning_text)
+        json_prompt = f"{prompt}{prefix}\nNow output the JSON answer only:\n"
+        outlines_model = outlines.from_mlxlm(self.model, self.tokenizer)
+        result = outlines_model(
+            json_prompt,
+            output_type=output_type,
+            max_tokens=max_new_tokens,
+            verbose=False,
+            **kwargs,
+        )
+        raw = f"{prefix}{result}"
+        print(f"\n[RAW REASONED JSON OUTPUT]\n{raw}\n[/RAW REASONED JSON OUTPUT]\n", flush=True)
+        return raw
 
     def stream(self, prompt: str, **kwargs):
         from mlx_lm import stream_generate
@@ -152,7 +201,8 @@ class HFBackend(Backend):
         num_beams = _get_num_beams(kwargs)
         num_return_sequences = _get_num_return_sequences(kwargs, num_beams)
 
-        inputs = self.tokenizer(prompt, return_tensors="pt")
+        reasoning_prompt = f"{prompt}<think>"
+        inputs = self.tokenizer(reasoning_prompt, return_tensors="pt")
         input_ids = inputs.input_ids.to(self.model.device)
         attention_mask = getattr(inputs, "attention_mask", None)
         if attention_mask is not None:
@@ -196,6 +246,76 @@ class HFBackend(Backend):
         result = outlines_model(prompt, output_type=output_type, max_new_tokens=max_new_tokens)
         print(f"\n[RAW JSON OUTPUT]\n{result}\n[/RAW JSON OUTPUT]\n", flush=True)
         return result
+
+    def generate_reasoned_json(self, prompt: str, output_type, **kwargs) -> str:
+        import outlines
+        from transformers import StoppingCriteria, StoppingCriteriaList
+
+        temperature = kwargs.pop("temperature", DEFAULT_TEMPERATURE)
+        max_new_tokens = kwargs.pop("max_new_tokens", DEFAULT_MAX_NEW_TOKENS)
+        reasoning_max_new_tokens = kwargs.pop("reasoning_max_new_tokens", 256)
+        num_beams = _get_num_beams(kwargs)
+
+        class StopOnText(StoppingCriteria):
+            def __init__(self, tokenizer, start_length: int, stop_text: str):
+                self.tokenizer = tokenizer
+                self.start_length = start_length
+                self.stop_text = stop_text
+
+            def __call__(self, input_ids, scores, **kwargs):
+                generated = self.tokenizer.decode(
+                    input_ids[0, self.start_length:],
+                    skip_special_tokens=True,
+                )
+                return self.stop_text in generated
+
+        reasoning_prompt = f"{prompt}<think>"
+        inputs = self.tokenizer(reasoning_prompt, return_tensors="pt")
+        input_ids = inputs.input_ids.to(self.model.device)
+        attention_mask = getattr(inputs, "attention_mask", None)
+        if attention_mask is not None:
+            attention_mask = attention_mask.to(self.model.device)
+
+        generation_kwargs = dict(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            max_new_tokens=reasoning_max_new_tokens,
+            eos_token_id=self.tokenizer.eos_token_id,
+            pad_token_id=self.tokenizer.eos_token_id,
+            stopping_criteria=StoppingCriteriaList(
+                [StopOnText(self.tokenizer, input_ids.shape[1], "</think>")]
+            ),
+            **kwargs,
+        )
+        if num_beams > 1:
+            generation_kwargs.update(do_sample=False, num_beams=num_beams)
+        else:
+            generation_kwargs.update(
+                do_sample=temperature > 0,
+                temperature=temperature if temperature > 0 else 1.0,
+            )
+
+        with self._torch.no_grad():
+            output_ids = self.model.generate(**generation_kwargs)
+
+        reasoning_text = self.tokenizer.decode(
+            output_ids[0, input_ids.shape[1]:],
+            skip_special_tokens=True,
+        )
+        reasoning_text = f"<think>{reasoning_text}"
+        prefix = _reasoning_prefix(reasoning_text)
+        json_prompt = f"{prompt}{prefix}\nNow output the JSON answer only:\n"
+
+        outlines_model = outlines.from_transformers(self.model, self.tokenizer)
+        result = outlines_model(
+            json_prompt,
+            output_type=output_type,
+            max_new_tokens=max_new_tokens,
+            **kwargs,
+        )
+        raw = f"{prefix}{result}"
+        print(f"\n[RAW REASONED JSON OUTPUT]\n{raw}\n[/RAW REASONED JSON OUTPUT]\n", flush=True)
+        return raw
 
     def stream(self, prompt: str, **kwargs):
         import time
