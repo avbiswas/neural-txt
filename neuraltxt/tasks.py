@@ -63,7 +63,7 @@ CONTINUATION_INSTRUCTION = (
 # ── Triplets ──────────────────────────────────────────────────────────────────
 
 TRIPLETS_INSTRUCTION = (
-    "Extract knowledge graph triplets from this passage and return them as JSON. Return a JSON array of subject-relation-object triplets supported by this passage"
+    "Extract knowledge graph triplets from this passage in markdown format."
 )
 
 # ── Comparison ────────────────────────────────────────────────────────────────
@@ -90,19 +90,29 @@ def build_retrieval_input(question: str, passages: list[str]) -> str:
 
 
 # ── JSON-mode instruction variants ──────────────────────────────────────────
-# For instructions that already mention a format (markdown/JSON), we swap it.
-# For instructions with no format mention, we append a JSON hint.
+# These must be the EXACT default instructions the model was trained on
+# (paperbd/paper_instructions_300K-v1). The string "Respond in JSON" never
+# appears in the training data — this is a prompt-sensitive SLM, so the JSON
+# instruction must convey the task using a phrasing the model actually saw;
+# structural validity is enforced separately by outlines constrained decoding.
+#
+# Tasks that have a dedicated JSON training form use it. Tasks whose JSON
+# adapter reused the text instruction (question, answer) keep the text default.
+# bullets has no JSON form but does have a structured "Python list" form.
+# rephrase / continuation / comparison are free-text tasks with NO structured
+# form in training; JSON mode is not supported for them (callers should refuse),
+# so their constants mirror the text default and must not be relied upon.
 
 BULLETS_INSTRUCTION_JSON = (
-    "Extract the important points from this passage as JSON bullet points.\nRespond in JSON."
+    "Extract the important points from this passage as a Python list of strings."
 )
 
 QA_PAIRS_INSTRUCTION_JSON = (
-    "\nGiven this passage of text, generate a list of important question answer pairs.\nRespond in JSON.\n    "
+    "\nGiven this passage of text, generate a list of important question answer pairs.\n    Generate as a list of json containing 'question' and 'answer' keys"
 )
 
 QUESTION_FROM_PASSAGE_INSTRUCTION_JSON = (
-    "Generate a question from this passage\nRespond in JSON."
+    "Generate a question from this passage"
 )
 
 QUESTIONS_LIST_INSTRUCTION_JSON = (
@@ -110,32 +120,25 @@ QUESTIONS_LIST_INSTRUCTION_JSON = (
 )
 
 FACT_FROM_PASSAGE_INSTRUCTION_JSON = (
-    "Generate an important fact or piece of information from this passage\nRespond in JSON."
+    "Generate an important fact or piece of information from this passage"
 )
 
 QA_ANSWER_INSTRUCTION_JSON = (
-    "Answer the user's question given the provided passage\nRespond in JSON."
+    "Answer the user's question given the provided passage"
 )
 
-REPHRASE_INSTRUCTION_JSON = (
-    "\nGiven this passage, rephrase it. Elaborate on the sentences by explaining the meaning. "
-    "Only present content that is strictly present in the passage, do not introduce new concepts "
-    "outside the scope of this input. Do not re-quote the original. Only generate answers.\nRespond in JSON.\n    "
-)
+# No structured form in training — JSON mode unsupported (mirrors text default).
+REPHRASE_INSTRUCTION_JSON = REPHRASE_INSTRUCTION
 
-CONTINUATION_INSTRUCTION_JSON = (
-    "You are given the beginning of a passage. "
-    "Continue the passage by generating all remaining text after the provided beginning. "
-    "Do not repeat the provided beginning.\nRespond in JSON."
-)
+# No structured form in training — JSON mode unsupported (mirrors text default).
+CONTINUATION_INSTRUCTION_JSON = CONTINUATION_INSTRUCTION
 
 TRIPLETS_INSTRUCTION_JSON = (
-    "Extract knowledge graph triplets from this passage and return them as JSON. Return a JSON array of subject-relation-object triplets supported by this passage\nRespond in JSON."
+    "Extract knowledge graph triplets from this passage and return them as JSON."
 )
 
-COMPARISON_INSTRUCTION_JSON = (
-    "\nGiven 2 passages of text, generate a detailed comparison of the two\nRespond in JSON.\n    "
-)
+# No structured form in training — JSON mode unsupported (mirrors text default).
+COMPARISON_INSTRUCTION_JSON = COMPARISON_INSTRUCTION
 
 RETRIEVAL_INSTRUCTION_JSON = (
     "Read the passages and identify which passage answers the question. "

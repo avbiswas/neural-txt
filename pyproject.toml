@@ -43,6 +43,9 @@ mlx = [
 app = [
     "gradio",
 ]
+tui = [
+    "textual",
+]
 
 [build-system]
 requires = ["hatchling"]

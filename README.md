@@ -243,3 +243,33 @@ python app.py --mlx --reasoning
 
 When the Gradio app runs with `--reasoning`, each output candidate shows the
 model's reasoning trace in a light italic gray block above the final output.
+
+## Terminal UI (TUI)
+
+A keyboard-driven terminal app (built with [Textual](https://textual.textualize.io/))
+that mirrors the Gradio demo — task grid, live token streaming, color-coded
+reasoning trace, and token/throughput/memory stats.
+
+```bash
+pip install neural-txt[tui]
+
+# MLX (default, Apple Silicon)
+python tui.py
+
+# HuggingFace
+python tui.py --hf
+
+# Reasoning model
+python tui.py --reasoning
+
+# Options
+#   --temperature 0.4    sampling temperature (default 0.4)
+#   -n 2                 candidates to generate, 1-4 (default 1)
+```
+
+- Pick a task with the **arrow keys**; `answer`/`comparison` reveal a second input.
+- **Enter** (or `Ctrl+R`) generates, `f` toggles text/JSON, `Ctrl+L` clears, `Esc` unfocuses the editor.
+- Text and JSON both stream token-by-token; reasoning-model output shows the
+  `<think>…</think>` trace dimmed above the answer.
+
+For quick manual testing without the UI, edit and run `playground.py`.

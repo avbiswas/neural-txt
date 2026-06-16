@@ -250,7 +250,8 @@ def test_reasoning_json_mode_uses_reasoned_json(monkeypatch):
 
     result = model.extract_bullets("A passage.", json=True)
 
-    assert result.bullets == ["First point"]
+    # bullets JSON uses a bare list[str] schema (matches the training instruction)
+    assert result.bullets == ["What is self-attention?"]
 
 
 def test_reasoning_json_mode_can_return_reasoning(monkeypatch):
@@ -259,9 +260,9 @@ def test_reasoning_json_mode_can_return_reasoning(monkeypatch):
     model = NeuralTxt(reasoning=True, return_reasoning=True)
     result = model.extract_bullets("A passage.", json=True)
 
-    assert result.output.bullets == ["First point"]
-    assert result.reasoning == "extract bullets"
-    assert result.raw == '<think>extract bullets</think>{"bullets":["First point"]}'
+    assert result.output.bullets == ["What is self-attention?"]
+    assert result.reasoning == "make a JSON list"
+    assert result.raw == '<think>make a JSON list</think>["What is self-attention?"]'
 
 
 def test_reasoning_json_mode_supports_list_schema(monkeypatch):

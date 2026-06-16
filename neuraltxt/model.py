@@ -205,9 +205,15 @@ class NeuralTxt:
         rollouts = self._get_rollouts(kwargs)
         return_reasoning = self._get_return_reasoning(kwargs)
         if json:
-            raws = self._run_json_many(BULLETS_INSTRUCTION_JSON, passage, BulletsOutput, rollouts, **kwargs)
+            # The JSON instruction asks for a bare "Python list of strings" (the
+            # in-distribution form), so constrain to list[str] and wrap into
+            # BulletsOutput — matching the schema to the prompt. Forcing the
+            # {"bullets": [...]} object schema here makes the model hallucinate
+            # label-like junk entries.
+            import json as json_mod
+            raws = self._run_json_many(BULLETS_INSTRUCTION_JSON, passage, list[ShortText], rollouts, **kwargs)
             answers, reasonings = self._json_answers_from_raws(raws)
-            outputs = [BulletsOutput.model_validate_json(answer) for answer in answers]
+            outputs = [BulletsOutput(bullets=json_mod.loads(answer)) for answer in answers]
             return self._maybe_return_reasoned(outputs, raws, reasonings, rollouts, return_reasoning)
         answers, reasonings, raws = self._run_many_with_reasoning(BULLETS_INSTRUCTION, passage, rollouts, **kwargs)
         outputs = [parse_bullets(answer) for answer in answers]
